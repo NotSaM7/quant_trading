@@ -8,6 +8,12 @@ import asyncio
 import uuid
 from models import StockData, PortfolioPosition, PortfolioSummary, TradeSignal, TradeRequest, TradeHistoryItem, AnalysisMetrics
 from constants import INDIAN_STOCKS
+import os
+import tempfile
+
+# Use /tmp for Vercel, or local directory for development if writable
+# For Vercel, we must use /tmp, but remember it's ephemeral
+DATA_FILE = os.path.join(tempfile.gettempdir(), "trade_history.json")
 
 class TradingEngine:
     def __init__(self, initial_cash: float = 100000.0):
@@ -19,7 +25,7 @@ class TradingEngine:
 
     def load_history(self):
         try:
-            with open("trade_history.json", "r") as f:
+            with open(DATA_FILE, "r") as f:
                 data = json.load(f)
                 self.history = [TradeHistoryItem(**item) for item in data]
                 # Re-calculate cash/positions based on history if needed, 
@@ -30,8 +36,11 @@ class TradingEngine:
             self.history = []
 
     def save_history(self):
-        with open("trade_history.json", "w") as f:
-            json.dump([item.dict() for item in self.history], f, default=str)
+        try:
+            with open(DATA_FILE, "w") as f:
+                json.dump([item.dict() for item in self.history], f, default=str)
+        except Exception as e:
+            print(f"Error saving history: {e}")
 
     def get_analysis(self) -> AnalysisMetrics:
         total_pnl = sum(item.pnl for item in self.history if item.pnl is not None)
