@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from trading_engine import TradingEngine
-from models import PortfolioSummary, TradeSignal, TradeRequest, AnalysisMetrics
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Quant Trading App")
 
@@ -14,57 +14,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-engine = TradingEngine()
+# Global variables for lazy loading
+engine = None
+import_error = None
+
+# Try to import dependencies safely
+try:
+    from trading_engine import TradingEngine
+    from models import PortfolioSummary, TradeSignal, TradeRequest, AnalysisMetrics
+    from constants import INDIAN_STOCKS
+except ImportError as e:
+    import_error = str(e)
+    print(f"Import Error: {e}")
+except Exception as e:
+    import_error = str(e)
+    print(f"Startup Error: {e}")
+
+def get_engine():
+    global engine
+    if import_error:
+        raise HTTPException(status_code=500, detail=f"Server Startup Error: {import_error}")
+    if engine is None:
+        try:
+            engine = TradingEngine()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Engine Init Error: {e}")
+    return engine
 
 @app.get("/")
 def read_root():
+    if import_error:
+        return {"status": "error", "message": f"Startup failed: {import_error}"}
     return {"message": "Quant Trading API is running"}
+
+@app.get("/api/debug")
+def debug_status():
+    return {
+        "import_error": import_error,
+        "engine_loaded": engine is not None
+    }
 
 @app.get("/api/portfolio", response_model=PortfolioSummary)
 def get_portfolio():
-    return engine.get_portfolio_summary()
+    return get_engine().get_portfolio_summary()
 
 @app.get("/api/price/{ticker}")
 def get_price(ticker: str):
-    price = engine.get_stock_price(ticker)
+    price = get_engine().get_stock_price(ticker)
     return {"ticker": ticker, "price": price}
 
 @app.post("/api/trade")
 def trade(trade_request: TradeRequest):
-    result = engine.execute_trade(trade_request)
+    result = get_engine().execute_trade(trade_request)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 @app.post("/api/strategy/{ticker}")
 def run_strategy(ticker: str, quantity: int = 5):
-    result = engine.run_strategy(ticker, quantity)
+    result = get_engine().run_strategy(ticker, quantity)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 @app.post("/api/auto/start")
 async def start_auto():
-    await engine.start_auto_trading()
+    await get_engine().start_auto_trading()
     return {"status": "started"}
 
 @app.post("/api/auto/stop")
 def stop_auto():
-    engine.stop_auto_trading()
+    get_engine().stop_auto_trading()
     return {"status": "stopped"}
 
 @app.get("/api/auto/status")
 def get_auto_status():
-    return {"is_running": engine.is_running}
+    return {"is_running": get_engine().is_running}
 
 @app.get("/api/analysis", response_model=AnalysisMetrics)
 def get_analysis():
-    return engine.get_analysis()
-
-from constants import INDIAN_STOCKS
+    return get_engine().get_analysis()
 
 @app.get("/api/stocks")
 def get_stocks(q: str = ""):
+    if import_error:
+        return []
+    
     q = q.lower()
     if not q:
         return INDIAN_STOCKS[:10] # Return top 10 if no query
@@ -74,4 +109,3 @@ def get_stocks(q: str = ""):
         if q in s["symbol"].lower() or q in s["name"].lower()
     ]
     return filtered[:20]
-

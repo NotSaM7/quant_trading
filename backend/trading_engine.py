@@ -15,6 +15,12 @@ import tempfile
 # For Vercel, we must use /tmp, but remember it's ephemeral
 DATA_FILE = os.path.join(tempfile.gettempdir(), "trade_history.json")
 
+# Set yfinance cache to /tmp to avoid read-only file system errors
+try:
+    yf.set_tz_cache_location(os.path.join(tempfile.gettempdir(), "yf_cache"))
+except Exception as e:
+    print(f"Warning: Could not set yfinance cache location: {e}")
+
 class TradingEngine:
     def __init__(self, initial_cash: float = 100000.0):
         self.cash = initial_cash
