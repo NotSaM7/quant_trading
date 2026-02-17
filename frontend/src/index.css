@@ -1,0 +1,141 @@
+/* Import Google Fonts - Inter & Playfair Display for a premium feel */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
+
+:root {
+  /* Spotify-inspired Theme Palette */
+  --bg-primary: #000000;
+  /* Deepest Black */
+  --bg-secondary: #121212;
+  /* Sidebar/Card Background */
+  --bg-elevated: #282828;
+  /* Card Hover/Highlight */
+  --bg-glass: rgba(18, 18, 18, 0.9);
+
+  --text-primary: #FFFFFF;
+  /* Pure White */
+  --text-secondary: #B3B3B3;
+  /* Light Grey */
+  --text-subdued: #A7A7A7;
+
+  --accent-primary: #1DB954;
+  /* Spotify Green */
+  --accent-hover: #1ed760;
+  /* Brighter Green for Hover */
+
+  --accent-error: #ef4444;
+  /* Red 500 */
+  --accent-success: #1DB954;
+  /* Same as primary */
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --nav-width: 240px;
+  --header-height: 64px;
+}
+
+body {
+  margin: 0;
+  display: block;
+  /* changed from flex center */
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  /* Prevent body scroll, handle in MainLayout */
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 0;
+}
+
+/* Utilities */
+.text-primary {
+  color: var(--text-primary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-accent {
+  color: var(--accent-primary);
+}
+
+.bg-primary {
+  background-color: var(--bg-primary);
+}
+
+.bg-secondary {
+  background-color: var(--bg-secondary);
+}
+
+/* Card Styles */
+.spotify-card {
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  /* Spotify uses slightly rounded corners */
+  padding: 16px;
+  transition: background-color 0.3s ease;
+  cursor: pointer;
+  height: 100%;
+}
+
+.spotify-card:hover {
+  background-color: var(--bg-elevated);
+}
+
+/* Scrollbar Styling - Thinner and Darker */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 0;
+  /* Spotify scrollbars are usually squareish or hidden */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Custom fade animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}

@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+pandas
+numpy
+yfinance
+python-multipart
+# Add other dependencies as needed
