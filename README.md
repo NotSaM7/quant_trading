@@ -2,7 +2,8 @@
 
 A modern, high-performance quantitative trading dashboard built with **React**, **FastAPI**, and **Python**. This project features a sleek, Spotify-inspired dark mode UI and powerful automated trading strategies.
 
-![Project Screenshot](dashboard.png)
+![Dashboard Screenshot 1](dashboard_1.png)
+![Dashboard Screenshot 2](dashboard_2.png)
 
 ## ✨ Features
 
