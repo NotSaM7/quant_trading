@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Generator
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, ForeignKey
+from sqlalchemy.engine.url import make_url, URL
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
 load_dotenv()
@@ -12,11 +13,24 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").replace("\n", "").replace("\r", "")
 
 def create_db_engine():
     if DATABASE_URL:
-        url = DATABASE_URL.replace("\n", "").replace("\r", "").strip()
-        if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
         try:
-            eng = create_engine(url, pool_pre_ping=True)
+            raw_url = DATABASE_URL.replace("\n", "").replace("\r", "").strip()
+            parsed = make_url(raw_url)
+            driver = "postgresql"
+            if parsed.drivername.startswith("postgres"):
+                driver = "postgresql"
+
+            cleaned_url = URL.create(
+                drivername=driver,
+                username=parsed.username.strip() if parsed.username else None,
+                password=parsed.password,
+                host=parsed.host.strip() if parsed.host else None,
+                port=parsed.port,
+                database=parsed.database.strip() if parsed.database else "postgres",
+                query=parsed.query
+            )
+
+            eng = create_engine(cleaned_url, pool_pre_ping=True)
             return eng
         except Exception as e:
             print(f"Postgres Connection Warning: {e}, falling back to SQLite")
