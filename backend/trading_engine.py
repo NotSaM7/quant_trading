@@ -3,11 +3,13 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+from sqlalchemy.orm import Session
 import json
 import asyncio
 import uuid
 import os
 import tempfile
+from database import UserDB, PortfolioDB, PositionDB, TradeDB
 from models import (
     StockData, PortfolioPosition, PortfolioSummary, TradeSignal, TradeRequest,
     TradeHistoryItem, AnalysisMetrics, BacktestTrade, BacktestResult
