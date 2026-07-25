@@ -12,13 +12,20 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if DATABASE_URL:
-    # Fix for Vercel/Heroku legacy postgres:// URL format
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     if "sslmode" not in DATABASE_URL and "sqlite" not in DATABASE_URL:
         separator = "&" if "?" in DATABASE_URL else "?"
         DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+    try:
+        engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+    except Exception as e:
+        print(f"Postgres Engine Init Warning: {e}, falling back to SQLite")
+        DB_DIR = os.path.join(tempfile.gettempdir(), "quant_trading_data")
+        os.makedirs(DB_DIR, exist_ok=True)
+        DB_PATH = os.path.join(DB_DIR, "quant_trading.db")
+        SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+        engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     # Local fallback to SQLite
     DB_DIR = os.path.join(tempfile.gettempdir(), "quant_trading_data")
