@@ -8,11 +8,11 @@ from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = os.getenv("DATABASE_URL", "").replace("\n", "").replace("\r", "").strip()
 
 def create_db_engine():
     if DATABASE_URL:
-        url = DATABASE_URL
+        url = DATABASE_URL.replace("\n", "").replace("\r", "").strip()
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
         try:
