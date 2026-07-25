@@ -11,20 +11,28 @@ from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 load_dotenv()
 
 RAW_DB_URL = os.getenv("DATABASE_URL", "")
-DATABASE_URL = re.sub(r'[\r\n\t ]+', '', RAW_DB_URL)
+
+def sanitize_url(raw: str) -> str:
+    if not raw:
+        return ""
+    # Strip literal \n, \r, escaped \\n, \\r, and trailing whitespace
+    clean = raw.replace("\\n", "").replace("\\r", "").replace("\n", "").replace("\r", "").strip()
+    return re.sub(r'[\r\n\t ]+', '', clean)
+
+DATABASE_URL = sanitize_url(RAW_DB_URL)
 
 def create_db_engine():
     if DATABASE_URL:
         try:
-            clean_url = re.sub(r'[\r\n\t ]+', '', DATABASE_URL)
+            clean_url = sanitize_url(DATABASE_URL)
             parsed = make_url(clean_url)
             driver = "postgresql"
             if parsed.drivername.startswith("postgres"):
                 driver = "postgresql"
 
-            db_name = re.sub(r'[\r\n\t ]+', '', parsed.database) if parsed.database else "postgres"
-            user_name = re.sub(r'[\r\n\t ]+', '', parsed.username) if parsed.username else None
-            host_name = re.sub(r'[\r\n\t ]+', '', parsed.host) if parsed.host else None
+            db_name = sanitize_url(parsed.database) if parsed.database else "postgres"
+            user_name = sanitize_url(parsed.username) if parsed.username else None
+            host_name = sanitize_url(parsed.host) if parsed.host else None
 
             cleaned_url = URL.create(
                 drivername=driver,
