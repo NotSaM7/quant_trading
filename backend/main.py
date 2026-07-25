@@ -148,8 +148,9 @@ def get_price(ticker: str):
 
 @app.post("/api/trade")
 @app.post("/trade")
-def trade(trade_request: TradeRequest):
-    result = trading_engine_instance.execute_trade(trade_request)
+def trade(trade_request: TradeRequest, current_user: Optional[UserResponse] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
+    user_id = current_user.id if current_user else None
+    result = trading_engine_instance.execute_trade_db(trade_request, db=db, user_id=user_id)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result

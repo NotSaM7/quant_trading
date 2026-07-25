@@ -496,6 +496,93 @@ class TradingEngine:
             equity_curve=equity_curve
         )
 
+    def execute_trade_db(self, trade_request: TradeRequest, db: Session, user_id: Optional[str] = None, strategy: str = "MANUAL", reason: Optional[str] = None):
+        ticker = trade_request.ticker.upper()
+        action = trade_request.action.upper()
+        quantity = trade_request.quantity
+
+        current_price = self.get_stock_price(ticker)
+        if current_price <= 0:
+            return {"status": "error", "message": f"Could not fetch price for {ticker}"}
+
+        portfolio = None
+        if user_id:
+            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        if not portfolio:
+            portfolio = db.query(PortfolioDB).first()
+        if not portfolio:
+            uid = user_id or str(uuid.uuid4())
+            portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=uid, cash=100000.0)
+            db.add(portfolio)
+            db.commit()
+            db.refresh(portfolio)
+
+        cost = current_price * quantity
+
+        if action == "BUY":
+            if portfolio.cash >= cost:
+                portfolio.cash -= cost
+                existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+                if existing_pos:
+                    total_cost = (existing_pos.quantity * existing_pos.average_price) + cost
+                    existing_pos.quantity += quantity
+                    existing_pos.average_price = total_cost / existing_pos.quantity
+                    existing_pos.current_price = current_price
+                else:
+                    new_pos = PositionDB(
+                        id=str(uuid.uuid4()),
+                        user_id=portfolio.user_id,
+                        ticker=ticker,
+                        quantity=quantity,
+                        average_price=current_price,
+                        current_price=current_price
+                    )
+                    db.add(new_pos)
+
+                trade = TradeDB(
+                    id=str(uuid.uuid4()),
+                    user_id=portfolio.user_id,
+                    ticker=ticker,
+                    action="BUY",
+                    quantity=quantity,
+                    price=current_price,
+                    strategy=strategy,
+                    reason=reason or f"Manual BUY order for {ticker}"
+                )
+                db.add(trade)
+                db.commit()
+                return {"status": "success", "message": f"Bought {quantity} shares of {ticker}"}
+            else:
+                return {"status": "error", "message": "Insufficient cash balance"}
+
+        elif action == "SELL":
+            existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+            if existing_pos and existing_pos.quantity >= quantity:
+                portfolio.cash += cost
+                existing_pos.quantity -= quantity
+                pnl = (current_price - existing_pos.average_price) * quantity
+                if existing_pos.quantity == 0:
+                    db.delete(existing_pos)
+
+                trade = TradeDB(
+                    id=str(uuid.uuid4()),
+                    user_id=portfolio.user_id,
+                    ticker=ticker,
+                    action="SELL",
+                    quantity=quantity,
+                    price=current_price,
+                    pnl=pnl,
+                    strategy=strategy,
+                    reason=reason or f"Manual SELL order for {ticker}"
+                )
+                db.add(trade)
+                db.commit()
+                return {"status": "success", "message": f"Sold {quantity} shares of {ticker}"}
+            else:
+                return {"status": "error", "message": "Insufficient position quantity to sell"}
+
+        return {"status": "error", "message": "Invalid trade action"}
+
     def get_portfolio_summary_db(self, db: Session, user_id: Optional[str] = None) -> PortfolioSummary:
         portfolio = None
         if user_id:
@@ -504,7 +591,11 @@ class TradingEngine:
             portfolio = db.query(PortfolioDB).first()
 
         if not portfolio:
-            return PortfolioSummary(cash=100000.0, equity=0.0, total_value=100000.0, positions=[])
+            uid = user_id or str(uuid.uuid4())
+            portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=uid, cash=100000.0)
+            db.add(portfolio)
+            db.commit()
+            db.refresh(portfolio)
 
         cash = portfolio.cash
         db_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
@@ -542,14 +633,19 @@ class TradingEngine:
         from concurrent.futures import ThreadPoolExecutor
         executed_trades = []
 
-        # 1. Fetch user portfolio from DB
+        # 1. Fetch user portfolio from DB (auto-create if missing)
         portfolio = None
         if user_id:
             portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
         if not portfolio:
             portfolio = db.query(PortfolioDB).first()
+
         if not portfolio:
-            return {"status": "success", "executed_trades": [], "message": "No active portfolio found"}
+            uid = user_id or str(uuid.uuid4())
+            portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=uid, cash=100000.0)
+            db.add(portfolio)
+            db.commit()
+            db.refresh(portfolio)
 
         # 2. Check 3.0% stop losses on active positions
         db_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
