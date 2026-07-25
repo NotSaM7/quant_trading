@@ -14,19 +14,9 @@ def create_db_engine():
     if DATABASE_URL:
         url = DATABASE_URL
         if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql+pg8000://", 1)
-        elif url.startswith("postgresql://") and "+pg8000" not in url and "+psycopg2" not in url:
-            url = url.replace("postgresql://", "postgresql+pg8000://", 1)
-        
-        if "sslmode" not in url and "sqlite" not in url:
-            separator = "&" if "?" in url else "?"
-            url = f"{url}{separator}sslmode=require"
-            
+            url = url.replace("postgres://", "postgresql://", 1)
         try:
-            eng = create_engine(url, pool_pre_ping=True, connect_args={"timeout": 5})
-            # Quick validation check
-            with eng.connect() as conn:
-                pass
+            eng = create_engine(url, pool_pre_ping=True)
             return eng
         except Exception as e:
             print(f"Postgres Connection Warning: {e}, falling back to SQLite")
