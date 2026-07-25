@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 # Fix for Vercel: Add current directory to sys.path so imports work
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from database import init_db, get_db, UserDB, PortfolioDB
+from database import init_db, get_db, UserDB, PortfolioDB, engine as db_engine
 from security import hash_password, verify_password, create_access_token, decode_access_token
 from models import (
     UserCreate, UserLogin, UserResponse, TokenResponse,
@@ -34,7 +34,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-engine = TradingEngine()
+trading_engine_instance = TradingEngine()
 
 def get_current_user_optional(authorization: str = Header(None), db: Session = Depends(get_db)) -> UserResponse | None:
     if not authorization or not authorization.startswith("Bearer "):
@@ -66,12 +66,13 @@ def debug_status():
     return {
         "has_database_url": bool(db_url),
         "database_url_prefix": db_url[:30] if db_url else "NONE (USING SQLITE)",
-        "active_engine_url": str(engine.url) if engine else "NONE"
+        "active_engine_url": str(db_engine.url) if db_engine else "NONE"
     }
 
 # --- AUTH ENDPOINTS ---
 
 @app.post("/api/auth/register", response_model=TokenResponse)
+@app.post("/auth/register", response_model=TokenResponse)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
     init_db()
     try:
@@ -109,6 +110,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Registration Error: {str(e)}")
 
 @app.post("/api/auth/login", response_model=TokenResponse)
+@app.post("/auth/login", response_model=TokenResponse)
 def login(credentials: UserLogin, db: Session = Depends(get_db)):
     init_db()
     try:
@@ -125,69 +127,71 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Login Error: {str(e)}")
 
 @app.get("/api/auth/me", response_model=UserResponse)
+@app.get("/auth/me", response_model=UserResponse)
 def get_me(current_user: UserResponse = Depends(get_current_user)):
     return current_user
 
 # --- PORTFOLIO & TRADING ENDPOINTS ---
 
 @app.get("/api/portfolio", response_model=PortfolioSummary)
+@app.get("/portfolio", response_model=PortfolioSummary)
 def get_portfolio():
-    return engine.get_portfolio_summary()
+    return trading_engine_instance.get_portfolio_summary()
 
 @app.get("/api/price/{ticker}")
+@app.get("/price/{ticker}")
 def get_price(ticker: str):
-    price = engine.get_stock_price(ticker)
+    price = trading_engine_instance.get_stock_price(ticker)
     return {"ticker": ticker, "price": price}
 
 @app.post("/api/trade")
+@app.post("/trade")
 def trade(trade_request: TradeRequest):
-    result = engine.execute_trade(trade_request)
+    result = trading_engine_instance.execute_trade(trade_request)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 @app.post("/api/strategy/{ticker}")
+@app.post("/strategy/{ticker}")
 def run_strategy(ticker: str, quantity: int = 5):
-    result = engine.run_strategy(ticker, quantity)
+    result = trading_engine_instance.run_strategy(ticker, quantity)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 @app.post("/api/auto/start")
+@app.post("/auto/start")
 async def start_auto():
-    await engine.start_auto_trading()
+    await trading_engine_instance.start_auto_trading()
     return {"status": "started"}
 
 @app.post("/api/auto/stop")
+@app.post("/auto/stop")
 def stop_auto():
-    engine.stop_auto_trading()
+    trading_engine_instance.stop_auto_trading()
     return {"status": "stopped"}
 
 @app.get("/api/auto/status")
+@app.get("/auto/status")
 def get_auto_status():
-    return {"is_running": engine.is_running}
+    return {"is_running": trading_engine_instance.is_running}
 
 @app.get("/api/analysis", response_model=AnalysisMetrics)
+@app.get("/analysis", response_model=AnalysisMetrics)
 def get_analysis():
-    return engine.get_analysis()
+    return trading_engine_instance.get_analysis()
 
 @app.get("/api/backtest", response_model=BacktestResult)
+@app.get("/backtest", response_model=BacktestResult)
 def run_backtest(ticker: str = "RELIANCE.NS", months: int = 12, initial_capital: float = 100000.0):
     try:
-        return engine.run_backtest(ticker=ticker, months=months, initial_capital=initial_capital)
+        return trading_engine_instance.run_backtest(ticker=ticker, months=months, initial_capital=initial_capital)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/api/debug")
-def debug_status():
-    db_url = os.getenv("DATABASE_URL", "")
-    return {
-        "has_database_url": bool(db_url),
-        "database_url_prefix": db_url[:20] if db_url else "NONE (USING SQLITE)",
-        "active_engine_url": str(engine.url) if engine else "NONE"
-    }
-
 @app.get("/api/stocks")
+@app.get("/stocks")
 def get_stocks(q: str = ""):
     q = q.lower()
     if not q:
