@@ -45,13 +45,44 @@ A modern, high-performance quantitative trading platform built with **React**, *
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Installation & Setup
 
 ### Prerequisites
 - Python 3.9+
 - Node.js 16+
 
-### Installation & Setup
+---
+
+### 🪟 Windows Setup (PowerShell)
+
+1. **Clone the repository**
+   ```powershell
+   git clone https://github.com/NotSaM7/quant_trading.git
+   cd quant_trading
+   ```
+
+2. **Setup & Run Backend**
+   ```powershell
+   cd backend
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   uvicorn main:app --reload
+   ```
+
+3. **Setup & Run Frontend** *(in a new PowerShell window)*
+   ```powershell
+   cd quant_trading\frontend
+   npm install
+   npm run dev
+   ```
+
+4. **Open Dashboard**
+   Navigate to `http://localhost:5173` in your browser.
+
+---
+
+### 🍎 macOS / Linux Setup (Terminal)
 
 1. **Clone the repository**
    ```bash
@@ -59,23 +90,18 @@ A modern, high-performance quantitative trading platform built with **React**, *
    cd quant_trading
    ```
 
-2. **Setup Backend**
+2. **Setup & Run Backend**
    ```bash
    cd backend
-   python -m venv .venv
-   
-   # Windows PowerShell:
-   .\.venv\Scripts\Activate.ps1
-   # Linux/macOS:
-   # source .venv/bin/activate
-
+   python3 -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    uvicorn main:app --reload
    ```
 
-3. **Setup Frontend**
+3. **Setup & Run Frontend** *(in a new Terminal window)*
    ```bash
-   cd frontend
+   cd quant_trading/frontend
    npm install
    npm run dev
    ```
