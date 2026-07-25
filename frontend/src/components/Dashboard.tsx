@@ -4,7 +4,7 @@ import TradeForm from './TradeForm';
 import { getPortfolio, type PortfolioSummary } from '../api';
 
 import Analysis from './Analysis';
-import { startAutoTrading, stopAutoTrading, getAutoStatus } from '../api';
+import { startAutoTrading, stopAutoTrading, getAutoStatus, triggerAutoScan } from '../api';
 import { Button, Chip, Tabs, Tab } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
@@ -39,8 +39,17 @@ const Dashboard: React.FC = () => {
         try {
             if (autoRunning) {
                 await stopAutoTrading();
+                setAutoRunning(false);
             } else {
                 await startAutoTrading();
+                setAutoRunning(true);
+                // Trigger first 60-second scan immediately on start
+                try {
+                    await triggerAutoScan();
+                    fetchPortfolio();
+                } catch (err) {
+                    console.error("Initial auto scan error", err);
+                }
             }
             await checkAutoStatus();
         } catch (e) {
@@ -51,12 +60,30 @@ const Dashboard: React.FC = () => {
     useEffect(() => {
         fetchPortfolio();
         checkAutoStatus();
-        const interval = setInterval(() => {
+
+        // 60-Second Auto Trading Bot Ticker (Runs continuously on active portfolio)
+        const autoInterval = setInterval(async () => {
+            if (autoRunning) {
+                try {
+                    await triggerAutoScan();
+                    fetchPortfolio();
+                } catch (e) {
+                    console.error("60s Auto scan ticker error", e);
+                }
+            }
+        }, 60000);
+
+        // 5-Second UI Refresh Ticker
+        const uiInterval = setInterval(() => {
             fetchPortfolio();
             checkAutoStatus();
         }, 5000);
-        return () => clearInterval(interval);
-    }, []);
+
+        return () => {
+            clearInterval(autoInterval);
+            clearInterval(uiInterval);
+        };
+    }, [autoRunning]);
 
     const formatCurrency = (value: number | undefined | null) => {
         if (value === undefined || value === null || isNaN(Number(value))) return "₹0.00";
@@ -91,7 +118,7 @@ const Dashboard: React.FC = () => {
                     <Typography variant="h4" fontWeight="bold">{getGreeting()}</Typography>
                     <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'center' }}>
                         <Chip
-                            label={autoRunning ? "Auto-Trading ACTIVE" : "Auto-Trading PAUSED"}
+                            label={autoRunning ? "Auto-Trading ACTIVE (60s Cycle)" : "Auto-Trading PAUSED"}
                             color={autoRunning ? "success" : "default"}
                             variant="outlined"
                             size="small"

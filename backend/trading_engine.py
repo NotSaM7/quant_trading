@@ -494,6 +494,136 @@ class TradingEngine:
             equity_curve=equity_curve
         )
 
+    def run_auto_cycle_db(self, db: Session, user_id: Optional[str] = None):
+        """Executes a 60-second quantitative auto-trading cycle on active database portfolio holdings."""
+        executed_trades = []
+        
+        # 1. Fetch user portfolio from DB
+        portfolio = None
+        if user_id:
+            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        if not portfolio:
+            portfolio = db.query(PortfolioDB).first()
+        if not portfolio:
+            return {"status": "success", "executed_trades": [], "message": "No active portfolio found"}
+
+        # 2. Check 3.0% stop losses on active positions
+        db_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+        for pos in db_positions:
+            price = self.get_stock_price(pos.ticker)
+            if price <= 0: continue
+            
+            pnl_pct = (price - pos.average_price) / pos.average_price
+            if pnl_pct <= -self.stop_loss_pct:
+                # Execute SELL
+                cost = price * pos.quantity
+                portfolio.cash += cost
+                pnl = (price - pos.average_price) * pos.quantity
+                
+                trade = TradeDB(
+                    id=str(uuid.uuid4()),
+                    user_id=portfolio.user_id,
+                    ticker=pos.ticker,
+                    action="SELL",
+                    quantity=pos.quantity,
+                    price=price,
+                    pnl=pnl,
+                    strategy="STOP_LOSS",
+                    reason=f"🚨 Emergency 3.0% Stop-Loss Triggered for {pos.ticker} at ₹{price:.2f}"
+                )
+                db.add(trade)
+                db.delete(pos)
+                db.commit()
+                executed_trades.append({"ticker": pos.ticker, "action": "SELL", "quantity": pos.quantity, "reason": "STOP_LOSS"})
+
+        # 3. Scan Indian stock watchlist for signals
+        buy_candidates = []
+        for stock in INDIAN_STOCKS[:15]:
+            ticker = stock["symbol"]
+            try:
+                res = self.run_strategy(ticker, execute=False)
+                if res.get("status") == "error": continue
+                
+                signal = res.get("signal")
+                price = res.get("price")
+                atr_qty = res.get("recommended_atr_qty", 1)
+                
+                if signal == "SELL":
+                    existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+                    if existing_pos:
+                        cost = price * existing_pos.quantity
+                        portfolio.cash += cost
+                        pnl = (price - existing_pos.average_price) * existing_pos.quantity
+                        
+                        trade = TradeDB(
+                            id=str(uuid.uuid4()),
+                            user_id=portfolio.user_id,
+                            ticker=ticker,
+                            action="SELL",
+                            quantity=existing_pos.quantity,
+                            price=price,
+                            pnl=pnl,
+                            strategy="SMA+RSI+ATR",
+                            reason=res.get("reason")
+                        )
+                        db.add(trade)
+                        db.delete(existing_pos)
+                        db.commit()
+                        executed_trades.append({"ticker": ticker, "action": "SELL", "quantity": existing_pos.quantity, "reason": res.get("reason")})
+                        
+                elif signal == "BUY":
+                    buy_candidates.append({"ticker": ticker, "price": price, "atr_qty": atr_qty, "reason": res.get("reason")})
+            except Exception as e:
+                print(f"Auto-scan error for {ticker}: {e}")
+
+        # 4. Allocate cash & execute BUY orders
+        if buy_candidates and portfolio.cash > 0:
+            cash_per_stock = portfolio.cash / len(buy_candidates)
+            for cand in buy_candidates:
+                ticker = cand["ticker"]
+                price = cand["price"]
+                atr_qty = cand["atr_qty"]
+                reason = cand["reason"]
+                
+                qty_by_cash = int(cash_per_stock // price)
+                final_qty = min(atr_qty, qty_by_cash) if qty_by_cash > 0 else 0
+                cost = price * final_qty
+                
+                if final_qty > 0 and portfolio.cash >= cost:
+                    portfolio.cash -= cost
+                    existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+                    if existing_pos:
+                        tot_cost = (existing_pos.quantity * existing_pos.average_price) + cost
+                        existing_pos.quantity += final_qty
+                        existing_pos.average_price = tot_cost / existing_pos.quantity
+                        existing_pos.current_price = price
+                    else:
+                        new_pos = PositionDB(
+                            id=str(uuid.uuid4()),
+                            user_id=portfolio.user_id,
+                            ticker=ticker,
+                            quantity=final_qty,
+                            average_price=price,
+                            current_price=price
+                        )
+                        db.add(new_pos)
+                        
+                    trade = TradeDB(
+                        id=str(uuid.uuid4()),
+                        user_id=portfolio.user_id,
+                        ticker=ticker,
+                        action="BUY",
+                        quantity=final_qty,
+                        price=price,
+                        strategy="SMA+RSI+ATR",
+                        reason=reason
+                    )
+                    db.add(trade)
+                    db.commit()
+                    executed_trades.append({"ticker": ticker, "action": "BUY", "quantity": final_qty, "reason": reason})
+
+        return {"status": "success", "executed_trades": executed_trades, "count": len(executed_trades)}
+
     async def start_auto_trading(self):
         if self.is_running:
             return
@@ -507,56 +637,6 @@ class TradingEngine:
         print("Starting auto-trading loop...")
         while self.is_running:
             print("Auto-trading scan started...")
-            
-            # Pass 0: Emergency Stop Loss Check
             self.check_stop_losses()
-            
-            buy_candidates = []
-            
-            # Pass 1: Scan all stocks for signals
-            for stock in INDIAN_STOCKS:
-                if not self.is_running: break
-                ticker = stock["symbol"]
-                await asyncio.sleep(0.4)
-                
-                try:
-                    result = self.run_strategy(ticker, execute=False)
-                    if result.get("status") == "error": continue
-
-                    signal = result.get("signal")
-                    price = result.get("price")
-                    atr_qty = result.get("recommended_atr_qty", 1)
-                    
-                    if signal == "SELL":
-                        self.run_strategy(ticker, execute=True)
-                    elif signal == "BUY":
-                        buy_candidates.append({
-                            "ticker": ticker,
-                            "price": price,
-                            "atr_qty": atr_qty
-                        })
-                        print(f"Found BUY candidate: {ticker} at {price} (ATR recommended qty: {atr_qty})")
-                    
-                except Exception as e:
-                    print(f"Error in auto-loop for {ticker}: {e}")
-            
-            # Pass 2: Volatility-Adjusted Allocation and Execute Buys
-            if self.is_running and buy_candidates:
-                num_buys = len(buy_candidates)
-                if num_buys > 0 and self.cash > 0:
-                    cash_per_stock = self.cash / num_buys
-                    for candidate in buy_candidates:
-                        ticker = candidate["ticker"]
-                        price = candidate["price"]
-                        atr_qty = candidate["atr_qty"]
-                        
-                        # Cap buy quantity by available cash allocation
-                        qty_by_cash = int(cash_per_stock // price)
-                        final_qty = min(atr_qty, qty_by_cash) if qty_by_cash > 0 else 0
-                        
-                        if final_qty > 0:
-                            print(f"Allocating ATR volatility size to {ticker}: {final_qty} shares @ ₹{price}")
-                            self.execute_trade(TradeRequest(ticker=ticker, action="BUY", quantity=final_qty), strategy="SMA+RSI+ATR")
-            
-            print("Auto-trading scan finished. Sleeping 60s.")
             await asyncio.sleep(60)
+

@@ -131,6 +131,11 @@ export const stopAutoTrading = async (): Promise<any> => {
     return response.data;
 };
 
+export const triggerAutoScan = async (): Promise<any> => {
+    const response = await api.post('/auto/scan');
+    return response.data;
+};
+
 export const getAutoStatus = async (): Promise<{ is_running: boolean }> => {
     const response = await api.get('/auto/status');
     return response.data;

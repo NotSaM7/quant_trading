@@ -172,6 +172,13 @@ def stop_auto():
     trading_engine_instance.stop_auto_trading()
     return {"status": "stopped"}
 
+@app.post("/api/auto/scan")
+@app.post("/auto/scan")
+def auto_scan(current_user: UserResponse | None = Depends(get_current_user_optional), db: Session = Depends(get_db)):
+    user_id = current_user.id if current_user else None
+    result = trading_engine_instance.run_auto_cycle_db(db, user_id=user_id)
+    return result
+
 @app.get("/api/auto/status")
 @app.get("/auto/status")
 def get_auto_status():
