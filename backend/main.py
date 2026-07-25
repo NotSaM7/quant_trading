@@ -19,8 +19,11 @@ from trading_engine import TradingEngine
 
 app = FastAPI(title="Quant Trading App")
 
-# Initialize SQLite database schema
-init_db()
+# Initialize database schema safely
+try:
+    init_db()
+except Exception as e:
+    print(f"Startup DB init warning: {e}")
 
 # Allow CORS
 app.add_middleware(

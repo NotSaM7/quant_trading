@@ -83,7 +83,10 @@ class TradeDB(Base):
     user = relationship("UserDB", back_populates="trades")
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"Database init warning: {e}")
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
