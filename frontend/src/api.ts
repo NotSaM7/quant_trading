@@ -4,6 +4,53 @@ const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
+// Attach JWT token to requests if present in localStorage
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('quant_token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+}, (error) => Promise.reject(error));
+
+export interface UserResponse {
+    id: string;
+    name: string;
+    email: string;
+}
+
+export interface TokenResponse {
+    access_token: string;
+    token_type: string;
+    user: UserResponse;
+}
+
+export interface UserCreate {
+    name: string;
+    email: string;
+    password: string;
+}
+
+export interface UserLogin {
+    email: string;
+    password: string;
+}
+
+export const registerUser = async (data: UserCreate): Promise<TokenResponse> => {
+    const response = await api.post<TokenResponse>('/auth/register', data);
+    return response.data;
+};
+
+export const loginUser = async (data: UserLogin): Promise<TokenResponse> => {
+    const response = await api.post<TokenResponse>('/auth/login', data);
+    return response.data;
+};
+
+export const getMe = async (): Promise<UserResponse> => {
+    const response = await api.get<UserResponse>('/auth/me');
+    return response.data;
+};
+
 export interface Position {
     ticker: string;
     quantity: number;

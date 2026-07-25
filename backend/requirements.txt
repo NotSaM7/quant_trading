@@ -5,4 +5,7 @@ pandas
 numpy
 yfinance
 python-multipart
-# Add other dependencies as needed
+sqlalchemy
+pyjwt
+passlib[bcrypt]
+bcrypt

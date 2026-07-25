@@ -1,12 +1,26 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
+import uuid
+from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
 # Fix for Vercel: Add current directory to sys.path so imports work
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from database import init_db, get_db, UserDB, PortfolioDB
+from security import hash_password, verify_password, create_access_token, decode_access_token
+from models import (
+    UserCreate, UserLogin, UserResponse, TokenResponse,
+    PortfolioSummary, TradeRequest, AnalysisMetrics, BacktestResult
+)
+from constants import INDIAN_STOCKS
+from trading_engine import TradingEngine
+
 app = FastAPI(title="Quant Trading App")
+
+# Initialize SQLite database schema
+init_db()
 
 # Allow CORS
 app.add_middleware(
@@ -17,102 +31,132 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables for lazy loading
-engine = None
-import_error = None
+engine = TradingEngine()
 
-# Try to import dependencies safely
-try:
-    from trading_engine import TradingEngine
-    from models import PortfolioSummary, TradeSignal, TradeRequest, AnalysisMetrics, BacktestResult
-    from constants import INDIAN_STOCKS
-except ImportError as e:
-    import_error = str(e)
-    print(f"Import Error: {e}")
-except Exception as e:
-    import_error = str(e)
-    print(f"Startup Error: {e}")
+def get_current_user_optional(authorization: str = Header(None), db: Session = Depends(get_db)) -> UserResponse | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ")[1]
+    payload = decode_access_token(token)
+    if not payload or "sub" not in payload:
+        return None
+    user_id = payload["sub"]
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not user:
+        return None
+    return UserResponse(id=user.id, name=user.name, email=user.email)
 
-def get_engine():
-    global engine
-    if import_error:
-        raise HTTPException(status_code=500, detail=f"Server Startup Error: {import_error}")
-    if engine is None:
-        try:
-            engine = TradingEngine()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Engine Init Error: {e}")
-    return engine
+def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> UserResponse:
+    user = get_current_user_optional(authorization, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired access token")
+    return user
 
 @app.get("/")
 def read_root():
-    if import_error:
-        return {"status": "error", "message": f"Startup failed: {import_error}"}
     return {"message": "Quant Trading API is running"}
 
-@app.get("/api/debug")
-def debug_status():
-    return {
-        "import_error": import_error,
-        "engine_loaded": engine is not None
-    }
+# --- AUTH ENDPOINTS ---
+
+@app.post("/api/auth/register", response_model=TokenResponse)
+def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(UserDB).filter(UserDB.email == user_data.email.lower().strip()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    user_id = str(uuid.uuid4())
+    hashed_pwd = hash_password(user_data.password)
+
+    new_user = UserDB(
+        id=user_id,
+        email=user_data.email.lower().strip(),
+        hashed_password=hashed_pwd,
+        name=user_data.name.strip()
+    )
+    new_portfolio = PortfolioDB(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        cash=100000.0
+    )
+
+    db.add(new_user)
+    db.add(new_portfolio)
+    db.commit()
+    db.refresh(new_user)
+
+    user_res = UserResponse(id=new_user.id, name=new_user.name, email=new_user.email)
+    token = create_access_token({"sub": new_user.id, "email": new_user.email})
+    return TokenResponse(access_token=token, user=user_res)
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.email == credentials.email.lower().strip()).first()
+    if not user or not verify_password(credentials.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+
+    user_res = UserResponse(id=user.id, name=user.name, email=user.email)
+    token = create_access_token({"sub": user.id, "email": user.email})
+    return TokenResponse(access_token=token, user=user_res)
+
+@app.get("/api/auth/me", response_model=UserResponse)
+def get_me(current_user: UserResponse = Depends(get_current_user)):
+    return current_user
+
+# --- PORTFOLIO & TRADING ENDPOINTS ---
 
 @app.get("/api/portfolio", response_model=PortfolioSummary)
 def get_portfolio():
-    return get_engine().get_portfolio_summary()
+    return engine.get_portfolio_summary()
 
 @app.get("/api/price/{ticker}")
 def get_price(ticker: str):
-    price = get_engine().get_stock_price(ticker)
+    price = engine.get_stock_price(ticker)
     return {"ticker": ticker, "price": price}
 
 @app.post("/api/trade")
 def trade(trade_request: TradeRequest):
-    result = get_engine().execute_trade(trade_request)
+    result = engine.execute_trade(trade_request)
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 @app.post("/api/strategy/{ticker}")
 def run_strategy(ticker: str, quantity: int = 5):
-    result = get_engine().run_strategy(ticker, quantity)
+    result = engine.run_strategy(ticker, quantity)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 @app.post("/api/auto/start")
 async def start_auto():
-    await get_engine().start_auto_trading()
+    await engine.start_auto_trading()
     return {"status": "started"}
 
 @app.post("/api/auto/stop")
 def stop_auto():
-    get_engine().stop_auto_trading()
+    engine.stop_auto_trading()
     return {"status": "stopped"}
 
 @app.get("/api/auto/status")
 def get_auto_status():
-    return {"is_running": get_engine().is_running}
+    return {"is_running": engine.is_running}
 
 @app.get("/api/analysis", response_model=AnalysisMetrics)
 def get_analysis():
-    return get_engine().get_analysis()
+    return engine.get_analysis()
 
 @app.get("/api/backtest", response_model=BacktestResult)
 def run_backtest(ticker: str = "RELIANCE.NS", months: int = 12, initial_capital: float = 100000.0):
     try:
-        return get_engine().run_backtest(ticker=ticker, months=months, initial_capital=initial_capital)
+        return engine.run_backtest(ticker=ticker, months=months, initial_capital=initial_capital)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/stocks")
 def get_stocks(q: str = ""):
-    if import_error:
-        return []
-    
     q = q.lower()
     if not q:
-        return INDIAN_STOCKS[:10] # Return top 10 if no query
+        return INDIAN_STOCKS[:10]
     
     filtered = [
         s for s in INDIAN_STOCKS 

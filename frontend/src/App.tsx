@@ -2,6 +2,7 @@ import { ThemeProvider, createTheme } from '@mui/material';
 import Dashboard from './components/Dashboard';
 import Sidebar from './components/Sidebar';
 import MainLayout from './components/MainLayout';
+import { AuthProvider } from './context/AuthContext';
 
 const darkTheme = createTheme({
   palette: {
@@ -39,12 +40,14 @@ const darkTheme = createTheme({
 function App() {
   return (
     <ThemeProvider theme={darkTheme}>
-      <div style={{ display: 'flex', width: '100%', minHeight: '100vh' }}>
-        <Sidebar />
-        <MainLayout>
-          <Dashboard />
-        </MainLayout>
-      </div>
+      <AuthProvider>
+        <div style={{ display: 'flex', width: '100%', minHeight: '100vh' }}>
+          <Sidebar />
+          <MainLayout>
+            <Dashboard />
+          </MainLayout>
+        </div>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

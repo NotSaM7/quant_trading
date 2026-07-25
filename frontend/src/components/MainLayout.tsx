@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import { Box, Typography, IconButton, Drawer } from '@mui/material';
+import { Box, Typography, IconButton, Drawer, Button, Avatar, Chip } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
+import LogoutIcon from '@mui/icons-material/Logout';
+import PersonIcon from '@mui/icons-material/Person';
 import Sidebar from './Sidebar';
+import { useAuth } from '../context/AuthContext';
+import AuthModal from './AuthModal';
 
 interface MainLayoutProps {
     children: React.ReactNode;
@@ -9,6 +13,7 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const [mobileOpen, setMobileOpen] = useState(false);
+    const { user, isAuthenticated, logout, openAuthModal } = useAuth();
 
     const handleDrawerToggle = () => {
         setMobileOpen(!mobileOpen);
@@ -40,7 +45,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     backdropFilter: 'blur(10px)',
                     display: 'flex',
                     alignItems: 'center',
-                    justify: 'space-between',
+                    justifyContent: 'space-between',
                     px: { xs: 2, sm: 3 },
                     borderBottom: '1px solid rgba(255,255,255,0.08)'
                 }}
@@ -60,6 +65,50 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         <span>📊</span> QuantBot
                     </Typography>
                 </Box>
+
+                {/* Right Side: Auth User Controls */}
+                <Box display="flex" alignItems="center" gap={2}>
+                    {isAuthenticated && user ? (
+                        <Box display="flex" alignItems="center" gap={1.5}>
+                            <Chip
+                                avatar={<Avatar sx={{ bgcolor: '#1DB954', color: 'black', fontWeight: 'bold' }}>{user.name.charAt(0).toUpperCase()}</Avatar>}
+                                label={user.name}
+                                variant="outlined"
+                                sx={{ color: 'white', borderColor: '#333', bgcolor: '#181818', fontWeight: 600 }}
+                            />
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={logout}
+                                startIcon={<LogoutIcon fontSize="small" />}
+                                sx={{ color: '#b3b3b3', borderColor: '#444', borderRadius: 20, '&:hover': { color: 'white', borderColor: '#666' } }}
+                            >
+                                Sign Out
+                            </Button>
+                        </Box>
+                    ) : (
+                        <Box display="flex" alignItems="center" gap={1}>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => openAuthModal('login')}
+                                startIcon={<PersonIcon fontSize="small" />}
+                                sx={{ color: 'white', borderColor: '#444', borderRadius: 20, px: 2 }}
+                            >
+                                Sign In
+                            </Button>
+                            <Button
+                                variant="contained"
+                                color="success"
+                                size="small"
+                                onClick={() => openAuthModal('register')}
+                                sx={{ borderRadius: 20, px: 2, fontWeight: 'bold' }}
+                            >
+                                Create Account
+                            </Button>
+                        </Box>
+                    )}
+                </Box>
             </Box>
 
             {/* Mobile Navigation Drawer */}
@@ -75,6 +124,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             >
                 <Sidebar />
             </Drawer>
+
+            {/* Auth Modal Component */}
+            <AuthModal />
 
             {/* Page Content Container */}
             <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, minHeight: 'calc(100vh - 64px)' }}>

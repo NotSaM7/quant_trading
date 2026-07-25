@@ -2,6 +2,25 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 from datetime import datetime
 
+class UserCreate(BaseModel):
+    name: str
+    email: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
 class StockData(BaseModel):
     ticker: str
     price: float
