@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from typing import Generator
@@ -9,24 +10,29 @@ from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").replace("\n", "").replace("\r", "").strip()
+RAW_DB_URL = os.getenv("DATABASE_URL", "")
+DATABASE_URL = re.sub(r'[\r\n\t ]+', '', RAW_DB_URL)
 
 def create_db_engine():
     if DATABASE_URL:
         try:
-            raw_url = DATABASE_URL.replace("\n", "").replace("\r", "").strip()
-            parsed = make_url(raw_url)
+            clean_url = re.sub(r'[\r\n\t ]+', '', DATABASE_URL)
+            parsed = make_url(clean_url)
             driver = "postgresql"
             if parsed.drivername.startswith("postgres"):
                 driver = "postgresql"
 
+            db_name = re.sub(r'[\r\n\t ]+', '', parsed.database) if parsed.database else "postgres"
+            user_name = re.sub(r'[\r\n\t ]+', '', parsed.username) if parsed.username else None
+            host_name = re.sub(r'[\r\n\t ]+', '', parsed.host) if parsed.host else None
+
             cleaned_url = URL.create(
                 drivername=driver,
-                username=parsed.username.strip() if parsed.username else None,
+                username=user_name,
                 password=parsed.password,
-                host=parsed.host.strip() if parsed.host else None,
+                host=host_name,
                 port=parsed.port,
-                database=parsed.database.strip() if parsed.database else "postgres",
+                database=db_name,
                 query=parsed.query
             )
 
