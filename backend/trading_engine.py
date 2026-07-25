@@ -496,6 +496,21 @@ class TradingEngine:
             equity_curve=equity_curve
         )
 
+    def _get_or_create_portfolio(self, db: Session, user_id: Optional[str] = None) -> Optional[PortfolioDB]:
+        portfolio = None
+        if user_id:
+            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        if not portfolio:
+            portfolio = db.query(PortfolioDB).first()
+        if not portfolio:
+            user = db.query(UserDB).filter(UserDB.id == user_id).first() if user_id else db.query(UserDB).first()
+            if user:
+                portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=user.id, cash=100000.0)
+                db.add(portfolio)
+                db.commit()
+                db.refresh(portfolio)
+        return portfolio
+
     def execute_trade_db(self, trade_request: TradeRequest, db: Session, user_id: Optional[str] = None, strategy: str = "MANUAL", reason: Optional[str] = None):
         ticker = trade_request.ticker.upper()
         action = trade_request.action.upper()
@@ -505,17 +520,9 @@ class TradingEngine:
         if current_price <= 0:
             return {"status": "error", "message": f"Could not fetch price for {ticker}"}
 
-        portfolio = None
-        if user_id:
-            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        portfolio = self._get_or_create_portfolio(db, user_id=user_id)
         if not portfolio:
-            portfolio = db.query(PortfolioDB).first()
-        if not portfolio:
-            uid = user_id or str(uuid.uuid4())
-            portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=uid, cash=100000.0)
-            db.add(portfolio)
-            db.commit()
-            db.refresh(portfolio)
+            return {"status": "error", "message": "Please sign in or create an account first to execute trades"}
 
         cost = current_price * quantity
 
@@ -584,18 +591,9 @@ class TradingEngine:
         return {"status": "error", "message": "Invalid trade action"}
 
     def get_portfolio_summary_db(self, db: Session, user_id: Optional[str] = None) -> PortfolioSummary:
-        portfolio = None
-        if user_id:
-            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        portfolio = self._get_or_create_portfolio(db, user_id=user_id)
         if not portfolio:
-            portfolio = db.query(PortfolioDB).first()
-
-        if not portfolio:
-            uid = user_id or str(uuid.uuid4())
-            portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=uid, cash=100000.0)
-            db.add(portfolio)
-            db.commit()
-            db.refresh(portfolio)
+            return PortfolioSummary(cash=100000.0, equity=0.0, total_value=100000.0, positions=[])
 
         cash = portfolio.cash
         db_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
@@ -633,19 +631,9 @@ class TradingEngine:
         from concurrent.futures import ThreadPoolExecutor
         executed_trades = []
 
-        # 1. Fetch user portfolio from DB (auto-create if missing)
-        portfolio = None
-        if user_id:
-            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        portfolio = self._get_or_create_portfolio(db, user_id=user_id)
         if not portfolio:
-            portfolio = db.query(PortfolioDB).first()
-
-        if not portfolio:
-            uid = user_id or str(uuid.uuid4())
-            portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=uid, cash=100000.0)
-            db.add(portfolio)
-            db.commit()
-            db.refresh(portfolio)
+            return {"status": "error", "message": "Please sign in or create an account first to run auto-trading"}
 
         # 2. Check 3.0% stop losses on active positions
         db_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
