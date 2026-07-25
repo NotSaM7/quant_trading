@@ -16,10 +16,11 @@ const Sidebar = () => {
                 position: 'fixed',
                 left: 0,
                 top: 0,
-                display: 'flex',
+                display: { xs: 'none', md: 'flex' },
                 flexDirection: 'column',
                 p: 3,
                 overflowY: 'auto',
+                zIndex: 1200,
             }}
         >
             {/* Brand / Logo */}

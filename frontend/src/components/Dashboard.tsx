@@ -117,17 +117,17 @@ const Dashboard: React.FC = () => {
 
             {tabIndex === 0 ? (
                 // PORTFOLIO VIEW
-                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', width: '100%' }}>
+                <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' }, width: '100%' }}>
                     {/* Left Side: Trade Form */}
-                    <Box sx={{ flex: '1 1 350px', minWidth: '300px' }}>
+                    <Box sx={{ flex: { xs: '1 1 100%', lg: '1 1 350px' }, width: '100%' }}>
                         <TradeForm onTradeSuccess={fetchPortfolio} />
                     </Box>
 
                     {/* Right Side: content */}
-                    <Box sx={{ flex: '2 1 500px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <Box sx={{ flex: { xs: '1 1 100%', lg: '2 1 500px' }, display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
 
                         {/* Summary Cards */}
-                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2 }}>
                             {/* Total Value */}
                             <Box className="spotify-card" sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                 <Box sx={{ width: 64, height: 64, bgcolor: 'linear-gradient(135deg, #450af5, #c4efd9)', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
@@ -161,9 +161,10 @@ const Dashboard: React.FC = () => {
                         </Box>
 
                         {/* Positions Table */}
-                        <Box className="spotify-card" sx={{ flexGrow: 1 }}>
+                        <Box className="spotify-card" sx={{ flexGrow: 1, width: '100%', overflow: 'hidden' }}>
                             <Typography variant="h5" fontWeight="bold" sx={{ mb: 2 }}>Your Portfolio</Typography>
-                            <Table size="medium">
+                            <Box sx={{ overflowX: 'auto', width: '100%' }}>
+                                <Table size="medium" sx={{ minWidth: 500 }}>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell sx={{ borderBottom: '1px solid #333', color: '#b3b3b3', fontSize: '0.875rem' }}>#</TableCell>
@@ -205,6 +206,7 @@ const Dashboard: React.FC = () => {
                                     )}
                                 </TableBody>
                             </Table>
+                            </Box>
                         </Box>
                     </Box>
                 </Box>

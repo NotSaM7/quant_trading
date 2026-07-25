@@ -284,53 +284,55 @@ const Analysis: React.FC = () => {
             </Box>
 
             {/* --- SECTION 3: LIVE TRADE HISTORY --- */}
-            <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, bgcolor: '#181818' }}>
+            <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, bgcolor: '#181818', width: '100%', overflow: 'hidden' }}>
                 <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>Recent Trade History</Typography>
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell sx={{ color: '#b3b3b3' }}>TIME</TableCell>
-                            <TableCell sx={{ color: '#b3b3b3' }}>TICKER</TableCell>
-                            <TableCell sx={{ color: '#b3b3b3' }}>ACTION</TableCell>
-                            <TableCell align="right" sx={{ color: '#b3b3b3' }}>QTY</TableCell>
-                            <TableCell align="right" sx={{ color: '#b3b3b3' }}>PRICE</TableCell>
-                            <TableCell align="right" sx={{ color: '#b3b3b3' }}>P&L</TableCell>
-                            <TableCell align="right" sx={{ color: '#b3b3b3' }}>STRATEGY</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {activeMetrics.trades.map((trade) => (
-                            <TableRow key={trade.id} hover sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
-                                <TableCell sx={{ color: 'text.secondary' }}>
-                                    {new Date(trade.timestamp).toLocaleString()}
-                                </TableCell>
-                                <TableCell sx={{ color: 'white', fontWeight: 600 }}>{trade.ticker}</TableCell>
-                                <TableCell>
-                                    <Chip
-                                        label={trade.action}
-                                        color={trade.action === "BUY" ? "success" : "error"}
-                                        size="small"
-                                        variant="outlined"
-                                    />
-                                </TableCell>
-                                <TableCell align="right" sx={{ color: 'text.secondary' }}>{trade.quantity}</TableCell>
-                                <TableCell align="right" sx={{ color: 'text.secondary' }}>{formatCurrency(trade.price)}</TableCell>
-                                <TableCell align="right" sx={{
-                                    color: trade.pnl ? (trade.pnl >= 0 ? 'success.main' : 'error.main') : 'text.disabled',
-                                    fontWeight: 600
-                                }}>
-                                    {trade.pnl != null ? formatCurrency(trade.pnl) : '-'}
-                                </TableCell>
-                                <TableCell align="right" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>{trade.strategy}</TableCell>
-                            </TableRow>
-                        ))}
-                        {activeMetrics.trades.length === 0 && (
+                <Box sx={{ overflowX: 'auto', width: '100%' }}>
+                    <Table size="small" sx={{ minWidth: 500 }}>
+                        <TableHead>
                             <TableRow>
-                                <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.disabled' }}>No trades recorded</TableCell>
+                                <TableCell sx={{ color: '#b3b3b3' }}>TIME</TableCell>
+                                <TableCell sx={{ color: '#b3b3b3' }}>TICKER</TableCell>
+                                <TableCell sx={{ color: '#b3b3b3' }}>ACTION</TableCell>
+                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>QTY</TableCell>
+                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>PRICE</TableCell>
+                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>P&L</TableCell>
+                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>STRATEGY</TableCell>
                             </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
+                        </TableHead>
+                        <TableBody>
+                            {activeMetrics.trades.map((trade) => (
+                                <TableRow key={trade.id} hover sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
+                                    <TableCell sx={{ color: 'text.secondary' }}>
+                                        {new Date(trade.timestamp).toLocaleString()}
+                                    </TableCell>
+                                    <TableCell sx={{ color: 'white', fontWeight: 600 }}>{trade.ticker}</TableCell>
+                                    <TableCell>
+                                        <Chip
+                                            label={trade.action}
+                                            color={trade.action === "BUY" ? "success" : "error"}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    </TableCell>
+                                    <TableCell align="right" sx={{ color: 'text.secondary' }}>{trade.quantity}</TableCell>
+                                    <TableCell align="right" sx={{ color: 'text.secondary' }}>{formatCurrency(trade.price)}</TableCell>
+                                    <TableCell align="right" sx={{
+                                        color: trade.pnl ? (trade.pnl >= 0 ? 'success.main' : 'error.main') : 'text.disabled',
+                                        fontWeight: 600
+                                    }}>
+                                        {trade.pnl != null ? formatCurrency(trade.pnl) : '-'}
+                                    </TableCell>
+                                    <TableCell align="right" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>{trade.strategy}</TableCell>
+                                </TableRow>
+                            ))}
+                            {activeMetrics.trades.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.disabled' }}>No trades recorded</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </Box>
             </Box>
         </Box>
     );
