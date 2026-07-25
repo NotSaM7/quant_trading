@@ -6,36 +6,39 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
-# Load environment variables from .env file if present
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL:
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    if "sslmode" not in DATABASE_URL and "sqlite" not in DATABASE_URL:
-        separator = "&" if "?" in DATABASE_URL else "?"
-        DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
-    try:
-        engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"connect_timeout": 5})
-    except Exception as e:
-        print(f"Postgres Engine Init Warning: {e}, falling back to SQLite")
-        DB_DIR = os.path.join(tempfile.gettempdir(), "quant_trading_data")
-        os.makedirs(DB_DIR, exist_ok=True)
-        DB_PATH = os.path.join(DB_DIR, "quant_trading.db")
-        SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
-        engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    # Local fallback to SQLite
+def create_db_engine():
+    if DATABASE_URL:
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+pg8000://", 1)
+        elif url.startswith("postgresql://") and "+pg8000" not in url and "+psycopg2" not in url:
+            url = url.replace("postgresql://", "postgresql+pg8000://", 1)
+        
+        if "sslmode" not in url and "sqlite" not in url:
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}sslmode=require"
+            
+        try:
+            eng = create_engine(url, pool_pre_ping=True, connect_args={"timeout": 5})
+            # Quick validation check
+            with eng.connect() as conn:
+                pass
+            return eng
+        except Exception as e:
+            print(f"Postgres Connection Warning: {e}, falling back to SQLite")
+
+    # Local / Fallback SQLite Database
     DB_DIR = os.path.join(tempfile.gettempdir(), "quant_trading_data")
     os.makedirs(DB_DIR, exist_ok=True)
     DB_PATH = os.path.join(DB_DIR, "quant_trading.db")
     SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
+    return create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 
+engine = create_db_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
