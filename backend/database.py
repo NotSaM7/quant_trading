@@ -8,7 +8,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 def create_db_engine():
     if DATABASE_URL:
