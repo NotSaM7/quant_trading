@@ -136,8 +136,9 @@ def get_me(current_user: UserResponse = Depends(get_current_user)):
 
 @app.get("/api/portfolio", response_model=PortfolioSummary)
 @app.get("/portfolio", response_model=PortfolioSummary)
-def get_portfolio():
-    return trading_engine_instance.get_portfolio_summary()
+def get_portfolio(current_user: Optional[UserResponse] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
+    user_id = current_user.id if current_user else None
+    return trading_engine_instance.get_portfolio_summary_db(db, user_id=user_id)
 
 @app.get("/api/price/{ticker}")
 @app.get("/price/{ticker}")

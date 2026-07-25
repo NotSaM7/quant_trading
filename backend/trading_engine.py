@@ -496,6 +496,47 @@ class TradingEngine:
             equity_curve=equity_curve
         )
 
+    def get_portfolio_summary_db(self, db: Session, user_id: Optional[str] = None) -> PortfolioSummary:
+        portfolio = None
+        if user_id:
+            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        if not portfolio:
+            portfolio = db.query(PortfolioDB).first()
+
+        if not portfolio:
+            return PortfolioSummary(cash=100000.0, equity=0.0, total_value=100000.0, positions=[])
+
+        cash = portfolio.cash
+        db_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+        position_list = []
+        equity = 0.0
+
+        for pos in db_positions:
+            price = self.get_stock_price(pos.ticker)
+            if price <= 0:
+                price = pos.current_price or pos.average_price
+
+            pnl = (price - pos.average_price) * pos.quantity
+            pos_val = price * pos.quantity
+            equity += pos_val
+
+            position_list.append(PortfolioPosition(
+                ticker=pos.ticker,
+                quantity=pos.quantity,
+                average_price=pos.average_price,
+                current_price=price,
+                pnl=pnl,
+                stop_loss_price=pos.average_price * 0.97
+            ))
+
+        total_val = cash + equity
+        return PortfolioSummary(
+            cash=cash,
+            equity=equity,
+            total_value=total_val,
+            positions=position_list
+        )
+
     def run_auto_cycle_db(self, db: Session, user_id: Optional[str] = None):
         """Executes a 60-second quantitative auto-trading cycle on active database portfolio holdings."""
         executed_trades = []
@@ -538,9 +579,9 @@ class TradingEngine:
                 db.commit()
                 executed_trades.append({"ticker": pos.ticker, "action": "SELL", "quantity": pos.quantity, "reason": "STOP_LOSS"})
 
-        # 3. Scan Indian stock watchlist for signals (Top 4 per 60s cycle for fast Vercel execution)
+        # 3. Scan Indian stock watchlist for signals (Top 12 stocks for active trading)
         buy_candidates = []
-        for stock in INDIAN_STOCKS[:4]:
+        for stock in INDIAN_STOCKS[:12]:
             ticker = stock["symbol"]
             try:
                 res = self.run_strategy(ticker, execute=False)
@@ -548,7 +589,7 @@ class TradingEngine:
                 
                 signal = res.get("signal")
                 price = res.get("price")
-                atr_qty = res.get("recommended_atr_qty", 1)
+                atr_qty = res.get("recommended_atr_qty", 5)
                 
                 if signal == "SELL":
                     existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
@@ -578,7 +619,7 @@ class TradingEngine:
             except Exception as e:
                 print(f"Auto-scan error for {ticker}: {e}")
 
-        # 4. Allocate cash & execute BUY orders
+        # 4. Allocate cash & execute BUY orders with healthy share quantities
         if buy_candidates and portfolio.cash > 0:
             cash_per_stock = portfolio.cash / len(buy_candidates)
             for cand in buy_candidates:
@@ -586,11 +627,12 @@ class TradingEngine:
                 price = cand.get("price")
                 if not price or price <= 0:
                     continue
-                atr_qty = cand.get("atr_qty", 1)
+                atr_qty = cand.get("atr_qty", 5)
                 reason = cand.get("reason", "")
                 
                 qty_by_cash = int(cash_per_stock // price)
-                final_qty = min(atr_qty, qty_by_cash) if qty_by_cash > 0 else 0
+                # Buy realistic quantity based on cash allocation (at least 1, up to max(atr_qty, qty_by_cash))
+                final_qty = max(1, min(max(atr_qty, 5), qty_by_cash)) if qty_by_cash > 0 else 0
                 cost = price * final_qty
                 
                 if final_qty > 0 and portfolio.cash >= cost:
