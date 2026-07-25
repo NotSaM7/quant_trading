@@ -536,9 +536,9 @@ class TradingEngine:
                 db.commit()
                 executed_trades.append({"ticker": pos.ticker, "action": "SELL", "quantity": pos.quantity, "reason": "STOP_LOSS"})
 
-        # 3. Scan Indian stock watchlist for signals
+        # 3. Scan Indian stock watchlist for signals (Top 4 per 60s cycle for fast Vercel execution)
         buy_candidates = []
-        for stock in INDIAN_STOCKS[:15]:
+        for stock in INDIAN_STOCKS[:4]:
             ticker = stock["symbol"]
             try:
                 res = self.run_strategy(ticker, execute=False)
