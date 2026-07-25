@@ -9,3 +9,5 @@ sqlalchemy
 pyjwt
 passlib[bcrypt]
 bcrypt
+psycopg2-binary
+python-dotenv

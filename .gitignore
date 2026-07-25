@@ -1,14 +1,23 @@
-
 # MacOS
 .DS_Store
 
 # VS Code
 .vscode/
 
-# JetBrains
-.idea/
+# Environment Variables
+.env
+*.env
+.env.local
 
-# General
+# Virtual Environment
+.venv/
+__pycache__/
+
+# Node Modules & Build Outputs
+node_modules/
+dist/
+
+# Logs & Temp
 *.log
 tmp/
 list.txt
