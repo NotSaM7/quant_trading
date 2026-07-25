@@ -573,7 +573,7 @@ class TradingEngine:
                         db.commit()
                         executed_trades.append({"ticker": ticker, "action": "SELL", "quantity": existing_pos.quantity, "reason": res.get("reason")})
                         
-                elif signal == "BUY":
+                elif signal == "BUY" and price and price > 0:
                     buy_candidates.append({"ticker": ticker, "price": price, "atr_qty": atr_qty, "reason": res.get("reason")})
             except Exception as e:
                 print(f"Auto-scan error for {ticker}: {e}")
@@ -583,9 +583,11 @@ class TradingEngine:
             cash_per_stock = portfolio.cash / len(buy_candidates)
             for cand in buy_candidates:
                 ticker = cand["ticker"]
-                price = cand["price"]
-                atr_qty = cand["atr_qty"]
-                reason = cand["reason"]
+                price = cand.get("price")
+                if not price or price <= 0:
+                    continue
+                atr_qty = cand.get("atr_qty", 1)
+                reason = cand.get("reason", "")
                 
                 qty_by_cash = int(cash_per_stock // price)
                 final_qty = min(atr_qty, qty_by_cash) if qty_by_cash > 0 else 0
