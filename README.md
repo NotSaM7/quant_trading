@@ -3,6 +3,8 @@
 A modern, high-performance quantitative trading platform built with **React**, **FastAPI**, **SQLAlchemy**, and **Supabase PostgreSQL**. Features a Spotify-inspired dark mode UI, native JWT user authentication, parallel 40-company quantitative strategy execution, ATR volatility position sizing, stop-loss protection, plain-English retail trade rationales, and 6–12 month historical backtesting.
 
 ![QuantBot Login & Account Modal](./docs/assets/login_auth_modal.png)
+![Dashboard Screenshot 1](dashboard_1.png)
+![Dashboard Screenshot 2](dashboard_2.png)
 
 ---
 
