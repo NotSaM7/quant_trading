@@ -175,10 +175,9 @@ def stop_auto():
 
 @app.post("/api/auto/scan")
 @app.post("/auto/scan")
-def auto_scan(current_user: Optional[UserResponse] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
+def auto_scan(current_user: UserResponse = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
-        user_id = current_user.id if current_user else None
-        result = trading_engine_instance.run_auto_cycle_db(db, user_id=user_id)
+        result = trading_engine_instance.run_auto_cycle_db(db, user_id=current_user.id)
         return result
     except Exception as e:
         import traceback

@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Table, TableBody, TableCell, TableHead, TableRow, CircularProgress } from '@mui/material';
+import { Box, Typography, Table, TableBody, TableCell, TableHead, TableRow, CircularProgress, Snackbar, Alert } from '@mui/material';
 import TradeForm from './TradeForm';
 import { getPortfolio, type PortfolioSummary } from '../api';
 
 import Analysis from './Analysis';
 import { startAutoTrading, stopAutoTrading, getAutoStatus, triggerAutoScan } from '../api';
+import { useAuth } from '../context/AuthContext';
 import { Button, Chip, Tabs, Tab } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 
 const Dashboard: React.FC = () => {
+    const { isAuthenticated, openAuthModal } = useAuth();
     const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [autoRunning, setAutoRunning] = useState<boolean>(false);
     const [tabIndex, setTabIndex] = useState<number>(0);
+    const [authWarning, setAuthWarning] = useState<string | null>(null);
 
     const fetchPortfolio = async () => {
         try {
@@ -36,6 +39,12 @@ const Dashboard: React.FC = () => {
     };
 
     const toggleAutoTrade = async () => {
+        if (!isAuthenticated) {
+            setAuthWarning("Please sign in / sign up first as a user to start the Auto-Trading Bot.");
+            openAuthModal('login');
+            return;
+        }
+
         try {
             if (autoRunning) {
                 await stopAutoTrading();
@@ -61,9 +70,9 @@ const Dashboard: React.FC = () => {
         fetchPortfolio();
         checkAutoStatus();
 
-        // 60-Second Auto Trading Bot Ticker (Runs continuously on active portfolio)
+        // 60-Second Auto Trading Bot Ticker (Runs continuously ONLY when user is authenticated and bot is active)
         const autoInterval = setInterval(async () => {
-            if (autoRunning) {
+            if (autoRunning && isAuthenticated) {
                 try {
                     await triggerAutoScan();
                     fetchPortfolio();
@@ -83,7 +92,7 @@ const Dashboard: React.FC = () => {
             clearInterval(autoInterval);
             clearInterval(uiInterval);
         };
-    }, [autoRunning]);
+    }, [autoRunning, isAuthenticated]);
 
     const formatCurrency = (value: number | undefined | null) => {
         if (value === undefined || value === null || isNaN(Number(value))) return "₹0.00";
@@ -241,6 +250,17 @@ const Dashboard: React.FC = () => {
                 // ANALYSIS VIEW
                 <Analysis />
             )}
+
+            <Snackbar
+                open={!!authWarning}
+                autoHideDuration={5000}
+                onClose={() => setAuthWarning(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert severity="warning" onClose={() => setAuthWarning(null)} sx={{ width: '100%', minWidth: '320px', bgcolor: '#282828', color: 'white' }}>
+                    {authWarning}
+                </Alert>
+            </Snackbar>
         </Box>
     );
 };
