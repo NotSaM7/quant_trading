@@ -168,6 +168,15 @@ def run_backtest(ticker: str = "RELIANCE.NS", months: int = 12, initial_capital:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/api/debug")
+def debug_status():
+    db_url = os.getenv("DATABASE_URL", "")
+    return {
+        "has_database_url": bool(db_url),
+        "database_url_prefix": db_url[:20] if db_url else "NONE (USING SQLITE)",
+        "active_engine_url": str(engine.url) if engine else "NONE"
+    }
+
 @app.get("/api/stocks")
 def get_stocks(q: str = ""):
     q = q.lower()
