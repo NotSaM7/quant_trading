@@ -30,7 +30,7 @@ def create_db_engine():
             if parsed.drivername.startswith("postgres"):
                 driver = "postgresql"
 
-            db_name = sanitize_url(parsed.database) if parsed.database else "postgres"
+            db_name = "postgres"
             user_name = sanitize_url(parsed.username) if parsed.username else None
             host_name = sanitize_url(parsed.host) if parsed.host else None
 
