@@ -37,7 +37,7 @@ app.add_middleware(
 
 trading_engine_instance = TradingEngine()
 
-def get_current_user_optional(authorization: str = Header(None), db: Session = Depends(get_db)) -> UserResponse | None:
+def get_current_user_optional(authorization: str = Header(None), db: Session = Depends(get_db)) -> Optional[UserResponse]:
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.split(" ")[1]
