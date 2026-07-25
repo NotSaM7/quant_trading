@@ -59,6 +59,16 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
 def read_root():
     return {"message": "Quant Trading API is running"}
 
+@app.get("/api/debug")
+@app.get("/debug")
+def debug_status():
+    db_url = os.getenv("DATABASE_URL", "")
+    return {
+        "has_database_url": bool(db_url),
+        "database_url_prefix": db_url[:30] if db_url else "NONE (USING SQLITE)",
+        "active_engine_url": str(engine.url) if engine else "NONE"
+    }
+
 # --- AUTH ENDPOINTS ---
 
 @app.post("/api/auth/register", response_model=TokenResponse)
