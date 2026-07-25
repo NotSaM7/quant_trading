@@ -13,6 +13,9 @@ class TradeSignal(BaseModel):
     price: float
     timestamp: datetime
     reason: str
+    atr: Optional[float] = None
+    rsi: Optional[float] = None
+    stop_loss_price: Optional[float] = None
 
 class PortfolioPosition(BaseModel):
     ticker: str
@@ -20,6 +23,8 @@ class PortfolioPosition(BaseModel):
     average_price: float
     current_price: float
     pnl: float
+    stop_loss_price: Optional[float] = None
+    atr: Optional[float] = None
 
 class PortfolioSummary(BaseModel):
     cash: float
@@ -41,6 +46,7 @@ class TradeHistoryItem(BaseModel):
     timestamp: datetime
     pnl: Optional[float] = None
     strategy: Optional[str] = "MANUAL"
+    reason: Optional[str] = None
 
 class AnalysisMetrics(BaseModel):
     total_pnl: float
@@ -48,3 +54,38 @@ class AnalysisMetrics(BaseModel):
     total_trades: int
     profit_factor: float
     trades: List[TradeHistoryItem]
+
+class BacktestRequest(BaseModel):
+    ticker: str = "RELIANCE.NS"
+    months: int = 12
+    initial_capital: float = 100000.0
+
+class BacktestTrade(BaseModel):
+    entry_date: str
+    exit_date: str
+    action: str
+    entry_price: float
+    exit_price: float
+    quantity: int
+    pnl: float
+    pnl_pct: float
+    exit_reason: str
+
+class EquityCurvePoint(BaseModel):
+    date: str
+    equity: float
+    close: float
+
+class BacktestResult(BaseModel):
+    ticker: str
+    months: int
+    initial_capital: float
+    final_equity: float
+    total_return_pct: float
+    win_rate: float
+    total_trades: int
+    max_drawdown_pct: float
+    sharpe_ratio: float
+    trades: List[BacktestTrade]
+    equity_curve: List[EquityCurvePoint]
+

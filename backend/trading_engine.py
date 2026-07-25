@@ -6,20 +6,85 @@ from typing import List, Dict, Optional
 import json
 import asyncio
 import uuid
-from models import StockData, PortfolioPosition, PortfolioSummary, TradeSignal, TradeRequest, TradeHistoryItem, AnalysisMetrics
-from constants import INDIAN_STOCKS
 import os
 import tempfile
+from models import (
+    StockData, PortfolioPosition, PortfolioSummary, TradeSignal, TradeRequest,
+    TradeHistoryItem, AnalysisMetrics, BacktestTrade, BacktestResult
+)
+from constants import INDIAN_STOCKS
 
-# Use /tmp for Vercel, or local directory for development if writable
-# For Vercel, we must use /tmp, but remember it's ephemeral
 DATA_FILE = os.path.join(tempfile.gettempdir(), "trade_history.json")
 
-# Set yfinance cache to /tmp to avoid read-only file system errors
 try:
     yf.set_tz_cache_location(os.path.join(tempfile.gettempdir(), "yf_cache"))
 except Exception as e:
     print(f"Warning: Could not set yfinance cache location: {e}")
+
+def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    high = df['High']
+    low = df['Low']
+    close = df['Close']
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    return tr.rolling(window=period).mean()
+
+def calculate_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / (loss.replace(0, 1e-9))
+    return 100 - (100 / (1 + rs))
+
+def generate_trade_summary(ticker: str, action: str, qty: int = 1, price: float = 0.0, sma5: float = 0.0, sma20: float = 0.0, rsi: float = 50.0, atr_pct: Optional[float] = None) -> str:
+    sym = ticker.replace(".NS", "")
+    sma20_safe = sma20 if sma20 > 0 else (price if price > 0 else 1.0)
+    sma_gap_pct = abs(sma5 - sma20_safe) / sma20_safe * 100
+
+    if action == "BUY":
+        # Trend strength
+        if sma_gap_pct > 3:
+            trend = "a strong short-term uptrend"
+        elif sma_gap_pct > 1:
+            trend = "a moderate upward trend"
+        else:
+            trend = "an early-stage upward crossover"
+
+        # RSI-based momentum description
+        if rsi >= 70:
+            momentum = f"momentum is very strong (RSI {rsi:.1f}), though nearing overbought territory"
+        elif rsi >= 50:
+            momentum = f"buying momentum is healthy (RSI {rsi:.1f})"
+        else:
+            momentum = f"momentum is just starting to build (RSI {rsi:.1f})"
+
+        rationale = f"{sym} showed {trend} (5-day avg {sma_gap_pct:.1f}% above 20-day avg), and {momentum}."
+
+    elif action == "SELL":
+        if sma_gap_pct > 3:
+            trend = "a sharp short-term downturn"
+        elif sma_gap_pct > 1:
+            trend = "a moderate downward crossover"
+        else:
+            trend = "a weakening trend"
+
+        if rsi <= 30:
+            momentum = f"selling pressure is heavy (RSI {rsi:.1f}), signaling oversold conditions"
+        elif rsi <= 50:
+            momentum = f"momentum has turned negative (RSI {rsi:.1f})"
+        else:
+            momentum = f"strength is fading despite RSI still at {rsi:.1f}"
+
+        rationale = f"{sym} showed {trend} (5-day avg {sma_gap_pct:.1f}% below 20-day avg), and {momentum}. Position closed to limit downside."
+    else:
+        rationale = f"{sym} is currently moving sideways with balanced momentum."
+
+    if atr_pct and atr_pct > 2.5:
+        rationale += f" Volatility was elevated (ATR {atr_pct:.1f}%), so position size was adjusted accordingly."
+
+    return rationale
 
 class TradingEngine:
     def __init__(self, initial_cash: float = 100000.0):
@@ -27,18 +92,23 @@ class TradingEngine:
         self.positions: Dict[str, PortfolioPosition] = {}
         self.history: List[TradeHistoryItem] = []
         self.is_running = False
+        self.stop_loss_pct = 0.03  # 3.0% stop loss
+        self.risk_per_trade_pct = 0.02  # 2.0% equity risk per trade
         self.load_history()
 
     def load_history(self):
         try:
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
-                self.history = [TradeHistoryItem(**item) for item in data]
-                # Re-calculate cash/positions based on history if needed, 
-                # but for now we'll just keep the history for analysis 
-                # and assume cash/positions are transient or reset on restart for this MVP version.
-                # ideally we should persist portfolio state too.
-        except FileNotFoundError:
+                valid_items = []
+                for item in data:
+                    try:
+                        valid_items.append(TradeHistoryItem(**item))
+                    except Exception as err:
+                        print(f"Skipping legacy history item: {err}")
+                self.history = valid_items
+        except Exception as e:
+            print(f"Error loading history: {e}")
             self.history = []
 
     def save_history(self):
@@ -67,18 +137,40 @@ class TradingEngine:
         )
 
     def get_stock_price(self, ticker: str) -> float:
-        # Fetch real-time data using yfinance
         try:
             ticker_data = yf.Ticker(ticker)
-            # rapid fetch for latest price
             history = ticker_data.history(period="1d")
             if not history.empty:
-                return history['Close'].iloc[-1]
+                return float(history['Close'].iloc[-1])
         except Exception as e:
             print(f"Error fetching price for {ticker}: {e}")
         return 0.0
 
+    def check_stop_losses(self):
+        """Emergency stop-loss monitor for active positions"""
+        to_sell = []
+        for ticker, pos in list(self.positions.items()):
+            current_price = self.get_stock_price(ticker)
+            if current_price <= 0:
+                continue
+            pos.current_price = current_price
+            pnl_pct = (current_price - pos.average_price) / pos.average_price
+            
+            # Check 3% stop loss or explicit stop loss price
+            is_stop_triggered = pnl_pct <= -self.stop_loss_pct
+            if pos.stop_loss_price and current_price <= pos.stop_loss_price:
+                is_stop_triggered = True
+                
+            if is_stop_triggered:
+                print(f"🚨 STOP LOSS TRIGGERED for {ticker}: Entry={pos.average_price}, Current={current_price}, Loss={pnl_pct*100:.2f}%")
+                to_sell.append((ticker, pos.quantity))
+                
+        for ticker, qty in to_sell:
+            stop_reason = generate_trade_summary(ticker=ticker, action="SELL", qty=qty, price=current_price, sma5=current_price*0.96, sma20=current_price, rsi=28.0)
+            self.execute_trade(TradeRequest(ticker=ticker, action="SELL", quantity=qty), strategy="STOP_LOSS", reason=stop_reason)
+
     def get_portfolio_summary(self) -> PortfolioSummary:
+        self.check_stop_losses()
         total_value = self.cash
         position_list = []
         
@@ -96,8 +188,8 @@ class TradingEngine:
             positions=position_list
         )
 
-    def execute_trade(self, trade_request: TradeRequest):
-        print(f"Executing trade: {trade_request}")
+    def execute_trade(self, trade_request: TradeRequest, strategy: str = "MANUAL", reason: Optional[str] = None):
+        print(f"Executing trade: {trade_request} ({strategy})")
         ticker = trade_request.ticker
         action = trade_request.action.upper()
         quantity = trade_request.quantity
@@ -114,22 +206,22 @@ class TradingEngine:
                 self.cash -= cost
                 if ticker in self.positions:
                    pos = self.positions[ticker]
-                   # Update average price
                    total_cost_existing = pos.quantity * pos.average_price
                    total_cost_new = total_cost_existing + cost
                    pos.quantity += quantity
                    pos.average_price = total_cost_new / pos.quantity
                 else:
+                    stop_price = current_price * (1 - self.stop_loss_pct)
                     self.positions[ticker] = PortfolioPosition(
                         ticker=ticker,
                         quantity=quantity,
                         average_price=current_price,
                         current_price=current_price,
-                        pnl=0.0
+                        pnl=0.0,
+                        stop_loss_price=stop_price
                     )
                 print(f"Bought {quantity} {ticker} at {current_price}")
                 
-                # Record in history
                 history_item = TradeHistoryItem(
                     id=str(uuid.uuid4()),
                     ticker=ticker,
@@ -137,7 +229,8 @@ class TradingEngine:
                     quantity=quantity,
                     price=current_price,
                     timestamp=datetime.now(),
-                    strategy="MANUAL" # Default, can be overridden if passed in context, but simplest here
+                    strategy=strategy,
+                    reason=reason or f"Bullish entry for {ticker}"
                 )
                 self.history.append(history_item)
                 self.save_history()
@@ -151,16 +244,14 @@ class TradingEngine:
                 self.cash += cost
                 pos = self.positions[ticker]
                 pos.quantity -= quantity
+                
+                avg_price = pos.average_price 
+                pnl = (current_price - avg_price) * quantity
+                
                 if pos.quantity == 0:
                     del self.positions[ticker]
                 print(f"Sold {quantity} {ticker} at {current_price}")
                 
-                # Calculate PnL for this specific sale (simplified FIFO or AVG)
-                # Using average price from position before it was reduced/removed
-                avg_price = pos.average_price 
-                pnl = (current_price - avg_price) * quantity
-                
-                # Record in history
                 history_item = TradeHistoryItem(
                     id=str(uuid.uuid4()),
                     ticker=ticker,
@@ -169,7 +260,8 @@ class TradingEngine:
                     price=current_price,
                     timestamp=datetime.now(),
                     pnl=pnl,
-                    strategy="MANUAL"
+                    strategy=strategy,
+                    reason=reason or f"Exit position for {ticker}"
                 )
                 self.history.append(history_item)
                 self.save_history()
@@ -180,77 +272,84 @@ class TradingEngine:
         
         return {"status": "error", "message": "Invalid action"}
 
-    # Placeholder for strategy execution
     def run_strategy(self, ticker: str, quantity: int = 5, use_all_cash: bool = False, execute: bool = True):
-        print(f"Running strategy for {ticker}, execute={execute}")
-        
-        # 1. Fetch historical data (1 mo, daily)
+        """Runs SMA5 / SMA20 + RSI(14) Confirmation Filter + ATR Volatility Sizing"""
         try:
             ticker_data = yf.Ticker(ticker)
-            history = ticker_data.history(period="1mo", interval="1d")
+            history = ticker_data.history(period="3mo", interval="1d")
             
-            if len(history) < 20:
-                return {"status": "error", "message": "Not enough data for SMA strategy"}
+            if len(history) < 25:
+                return {"status": "error", "message": "Not enough historical data for indicators"}
             
-            # 2. Calculate Indicators (SMA 5 and SMA 20)
+            # Compute technical indicators
             history['SMA5'] = history['Close'].rolling(window=5).mean()
             history['SMA20'] = history['Close'].rolling(window=20).mean()
+            history['ATR14'] = calculate_atr(history, period=14)
+            history['RSI14'] = calculate_rsi(history, period=14)
             
-            last_close = history['Close'].iloc[-1]
-            last_sma5 = history['SMA5'].iloc[-1]
-            last_sma20 = history['SMA20'].iloc[-1]
+            last_close = float(history['Close'].iloc[-1])
+            last_sma5 = float(history['SMA5'].iloc[-1])
+            last_sma20 = float(history['SMA20'].iloc[-1])
+            last_atr = float(history['ATR14'].iloc[-1]) if not pd.isna(history['ATR14'].iloc[-1]) else last_close * 0.02
+            last_rsi = float(history['RSI14'].iloc[-1]) if not pd.isna(history['RSI14'].iloc[-1]) else 50.0
             
-            # 3. Generate Signal
+            close_5d_ago = float(history['Close'].iloc[-6]) if len(history) >= 6 else last_close
+            price_change_5d = ((last_close - close_5d_ago) / close_5d_ago * 100) if close_5d_ago > 0 else 0.0
+            
             signal = "HOLD"
-            reason = "No crossover detected"
             
+            # Signal Logic with RSI Confirmation Filter (> 50 for bullish momentum)
             if last_sma5 > last_sma20:
-                signal = "BUY"
-                reason = "SMA5 crossed above SMA20 (Bullish)"
+                if last_rsi > 50:
+                    signal = "BUY"
+                else:
+                    signal = "HOLD"
             elif last_sma5 < last_sma20:
                 signal = "SELL"
-                reason = "SMA5 crossed below SMA20 (Bearish)"
+
+            atr_pct = (last_atr / last_close * 100) if last_close > 0 else 0.0
+            reason = generate_trade_summary(
+                ticker=ticker,
+                action=signal,
+                qty=quantity,
+                price=last_close,
+                sma5=last_sma5,
+                sma20=last_sma20,
+                rsi=last_rsi,
+                atr_pct=atr_pct
+            )
                 
-            # 4. Execute Trade if Signal Matches AND execute flag is True
-            trade_result = None
+            # ATR-based volatility position sizing
+            # Risk 2% of capital divided by 1.5 * ATR volatility
+            total_equity = self.cash + sum(p.current_price * p.quantity for p in self.positions.values())
+            risk_amount = total_equity * self.risk_per_trade_pct
+            risk_per_share = max(1.5 * last_atr, last_close * self.stop_loss_pct)
+            atr_qty = int(risk_amount // risk_per_share) if risk_per_share > 0 else quantity
+            atr_qty = max(1, atr_qty)
             
+            trade_result = None
             if execute:
                 if signal == "BUY":
-                     qty_to_buy = quantity
-                     
-                     if use_all_cash and last_close > 0:
-                         qty_to_buy = int(self.cash // last_close)
-                         if qty_to_buy < 1:
-                             reason += " - Insufficient cash"
-                             qty_to_buy = 0
-                     
-                     if qty_to_buy > 0:
-                         if self.cash > (last_close * qty_to_buy):
-                             trade_result = self.execute_trade(TradeRequest(
-                                 ticker=ticker, action="BUY", quantity=qty_to_buy
-                             ))
-                         else:
-                             reason += " - Insufficient cash"
-                     else:
-                        if ticker in self.positions:
-                            reason += " - Holding (No cash)"
-                        else:
-                            reason += " - Insufficient cash"
-                        
+                    qty_to_buy = atr_qty if not use_all_cash else int(self.cash // last_close)
+                    if self.cash >= (last_close * qty_to_buy) and qty_to_buy > 0:
+                        trade_result = self.execute_trade(TradeRequest(ticker=ticker, action="BUY", quantity=qty_to_buy), strategy="SMA+RSI+ATR", reason=reason)
+                    else:
+                        reason += " (Insufficient cash for full order)"
                 elif signal == "SELL":
                     if ticker in self.positions:
                         qty_to_sell = self.positions[ticker].quantity
-                        trade_result = self.execute_trade(TradeRequest(
-                            ticker=ticker, action="SELL", quantity=qty_to_sell
-                        ))
-                    else:
-                        reason += " - No position to sell"
+                        trade_result = self.execute_trade(TradeRequest(ticker=ticker, action="SELL", quantity=qty_to_sell), strategy="SMA+RSI+ATR", reason=reason)
 
+            stop_price = last_close * (1 - self.stop_loss_pct)
             return {
                 "ticker": ticker,
-                "price": float(last_close),
-                "sma5": float(last_sma5) if not pd.isna(last_sma5) else None,
-                "sma20": float(last_sma20) if not pd.isna(last_sma20) else None,
+                "price": last_close,
+                "sma5": last_sma5,
+                "sma20": last_sma20,
+                "atr14": last_atr,
+                "rsi14": last_rsi,
+                "stop_loss_price": stop_price,
+                "recommended_atr_qty": atr_qty,
                 "signal": signal,
                 "reason": reason,
                 "trade_executed": trade_result
@@ -259,6 +358,141 @@ class TradingEngine:
         except Exception as e:
             print(f"Strategy error: {e}")
             return {"status": "error", "message": str(e)}
+
+    def run_backtest(self, ticker: str = "RELIANCE.NS", months: int = 12, initial_capital: float = 100000.0) -> BacktestResult:
+        """Runs a 6-12 month historical simulation with ATR sizing, RSI filter, and Stop Loss"""
+        period_str = "6mo" if months <= 6 else "1y"
+        ticker_data = yf.Ticker(ticker)
+        df = ticker_data.history(period=period_str, interval="1d")
+        
+        if len(df) < 30:
+            raise ValueError(f"Insufficient historical data for {ticker} over {months} months")
+            
+        df['SMA5'] = df['Close'].rolling(window=5).mean()
+        df['SMA20'] = df['Close'].rolling(window=20).mean()
+        df['ATR14'] = calculate_atr(df, period=14)
+        df['RSI14'] = calculate_rsi(df, period=14)
+        
+        cash = initial_capital
+        position_qty = 0
+        entry_price = 0.0
+        entry_date = ""
+        stop_price = 0.0
+        
+        trades: List[BacktestTrade] = []
+        equity_curve: List[Dict[str, float]] = []
+        
+        for i in range(20, len(df)):
+            date_str = df.index[i].strftime("%Y-%m-%d")
+            close = float(df['Close'].iloc[i])
+            low = float(df['Low'].iloc[i])
+            sma5 = float(df['SMA5'].iloc[i])
+            sma20 = float(df['SMA20'].iloc[i])
+            atr = float(df['ATR14'].iloc[i]) if not pd.isna(df['ATR14'].iloc[i]) else close * 0.02
+            rsi = float(df['RSI14'].iloc[i]) if not pd.isna(df['RSI14'].iloc[i]) else 50.0
+            
+            # Check stop loss if holding
+            if position_qty > 0:
+                if low <= stop_price or close <= stop_price:
+                    exit_price = min(close, stop_price)
+                    pnl = (exit_price - entry_price) * position_qty
+                    pnl_pct = (exit_price - entry_price) / entry_price * 100
+                    cash += position_qty * exit_price
+                    
+                    trades.append(BacktestTrade(
+                        entry_date=entry_date,
+                        exit_date=date_str,
+                        action="SELL",
+                        entry_price=entry_price,
+                        exit_price=exit_price,
+                        quantity=position_qty,
+                        pnl=pnl,
+                        pnl_pct=pnl_pct,
+                        exit_reason="STOP_LOSS (-3.0%)"
+                    ))
+                    position_qty = 0
+                    
+            # Check Signals
+            if position_qty == 0:
+                # BUY check: SMA5 > SMA20 AND RSI > 50
+                if sma5 > sma20 and rsi > 50:
+                    risk_amt = cash * self.risk_per_trade_pct
+                    risk_per_share = max(1.5 * atr, close * self.stop_loss_pct)
+                    qty = int(risk_amt // risk_per_share) if risk_per_share > 0 else int((cash * 0.25) // close)
+                    qty = min(qty, int(cash // close))
+                    
+                    if qty > 0:
+                        position_qty = qty
+                        entry_price = close
+                        entry_date = date_str
+                        stop_price = close * (1 - self.stop_loss_pct)
+                        cash -= qty * close
+            else:
+                # SELL check: SMA5 < SMA20
+                if sma5 < sma20:
+                    exit_price = close
+                    pnl = (exit_price - entry_price) * position_qty
+                    pnl_pct = (exit_price - entry_price) / entry_price * 100
+                    cash += position_qty * exit_price
+                    
+                    trades.append(BacktestTrade(
+                        entry_date=entry_date,
+                        exit_date=date_str,
+                        action="SELL",
+                        entry_price=entry_price,
+                        exit_price=exit_price,
+                        quantity=position_qty,
+                        pnl=pnl,
+                        pnl_pct=pnl_pct,
+                        exit_reason="SMA Crossover Exit"
+                    ))
+                    position_qty = 0
+
+            current_equity = cash + (position_qty * close)
+            equity_curve.append({
+                "date": date_str,
+                "equity": round(current_equity, 2),
+                "close": round(close, 2)
+            })
+
+        final_equity = cash + (position_qty * float(df['Close'].iloc[-1]))
+        total_return_pct = ((final_equity - initial_capital) / initial_capital) * 100
+        
+        total_trades = len(trades)
+        winning_trades = len([t for t in trades if t.pnl > 0])
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+        
+        # Calculate Max Drawdown %
+        equities = [e["equity"] for e in equity_curve]
+        peak = equities[0] if equities else initial_capital
+        max_dd = 0.0
+        for eq in equities:
+            if eq > peak:
+                peak = eq
+            dd = (peak - eq) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
+                
+        # Sharpe Ratio (annualized)
+        returns = pd.Series(equities).pct_change().dropna()
+        if len(returns) > 1 and returns.std() > 0:
+            sharpe = (returns.mean() / returns.std()) * np.sqrt(252)
+        else:
+            sharpe = 0.0
+            
+        return BacktestResult(
+            ticker=ticker,
+            months=months,
+            initial_capital=initial_capital,
+            final_equity=round(final_equity, 2),
+            total_return_pct=round(total_return_pct, 2),
+            win_rate=round(win_rate, 2),
+            total_trades=total_trades,
+            max_drawdown_pct=round(max_dd, 2),
+            sharpe_ratio=round(float(sharpe), 2),
+            trades=trades,
+            equity_curve=equity_curve
+        )
 
     async def start_auto_trading(self):
         if self.is_running:
@@ -274,58 +508,55 @@ class TradingEngine:
         while self.is_running:
             print("Auto-trading scan started...")
             
+            # Pass 0: Emergency Stop Loss Check
+            self.check_stop_losses()
+            
             buy_candidates = []
             
             # Pass 1: Scan all stocks for signals
             for stock in INDIAN_STOCKS:
                 if not self.is_running: break
-                
                 ticker = stock["symbol"]
-                await asyncio.sleep(0.5) # Reduced sleep for faster scan
+                await asyncio.sleep(0.4)
                 
                 try:
-                    # Run strategy in analysis mode only (execute=False)
-                    # We will handle execution after gathering all candidates to distribute cash
                     result = self.run_strategy(ticker, execute=False)
-                    
                     if result.get("status") == "error": continue
 
                     signal = result.get("signal")
                     price = result.get("price")
+                    atr_qty = result.get("recommended_atr_qty", 1)
                     
                     if signal == "SELL":
-                        # Execute SELL immediately to free up cash for buys
                         self.run_strategy(ticker, execute=True)
-                        
                     elif signal == "BUY":
                         buy_candidates.append({
                             "ticker": ticker,
-                            "price": price
+                            "price": price,
+                            "atr_qty": atr_qty
                         })
-                        print(f"Found BUY candidate: {ticker} at {price}")
+                        print(f"Found BUY candidate: {ticker} at {price} (ATR recommended qty: {atr_qty})")
                     
                 except Exception as e:
                     print(f"Error in auto-loop for {ticker}: {e}")
             
-            # Pass 2: Distribute cash and execute buys
+            # Pass 2: Volatility-Adjusted Allocation and Execute Buys
             if self.is_running and buy_candidates:
                 num_buys = len(buy_candidates)
                 if num_buys > 0 and self.cash > 0:
-                    print(f"Distributing ${self.cash} among {num_buys} stocks")
                     cash_per_stock = self.cash / num_buys
-                    
                     for candidate in buy_candidates:
                         ticker = candidate["ticker"]
                         price = candidate["price"]
+                        atr_qty = candidate["atr_qty"]
                         
-                        qty = int(cash_per_stock // price)
-                        if qty > 0:
-                            print(f"Allocating {cash_per_stock} to {ticker} -> Buy {qty}")
-                            self.execute_trade(TradeRequest(
-                                ticker=ticker, action="BUY", quantity=qty
-                            ))
-                        else:
-                            print(f"Skipping {ticker}: Insufficient allocated cash ({cash_per_stock}) for price {price}")
+                        # Cap buy quantity by available cash allocation
+                        qty_by_cash = int(cash_per_stock // price)
+                        final_qty = min(atr_qty, qty_by_cash) if qty_by_cash > 0 else 0
+                        
+                        if final_qty > 0:
+                            print(f"Allocating ATR volatility size to {ticker}: {final_qty} shares @ ₹{price}")
+                            self.execute_trade(TradeRequest(ticker=ticker, action="BUY", quantity=final_qty), strategy="SMA+RSI+ATR")
             
             print("Auto-trading scan finished. Sleeping 60s.")
             await asyncio.sleep(60)

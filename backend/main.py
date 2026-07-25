@@ -24,7 +24,7 @@ import_error = None
 # Try to import dependencies safely
 try:
     from trading_engine import TradingEngine
-    from models import PortfolioSummary, TradeSignal, TradeRequest, AnalysisMetrics
+    from models import PortfolioSummary, TradeSignal, TradeRequest, AnalysisMetrics, BacktestResult
     from constants import INDIAN_STOCKS
 except ImportError as e:
     import_error = str(e)
@@ -97,6 +97,13 @@ def get_auto_status():
 @app.get("/api/analysis", response_model=AnalysisMetrics)
 def get_analysis():
     return get_engine().get_analysis()
+
+@app.get("/api/backtest", response_model=BacktestResult)
+def run_backtest(ticker: str = "RELIANCE.NS", months: int = 12, initial_capital: float = 100000.0):
+    try:
+        return get_engine().run_backtest(ticker=ticker, months=months, initial_capital=initial_capital)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/stocks")
 def get_stocks(q: str = ""):

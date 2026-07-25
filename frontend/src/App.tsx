@@ -39,7 +39,7 @@ const darkTheme = createTheme({
 function App() {
   return (
     <ThemeProvider theme={darkTheme}>
-      <div style={{ display: 'flex' }}>
+      <div style={{ display: 'flex', width: '100%', minHeight: '100vh' }}>
         <Sidebar />
         <MainLayout>
           <Dashboard />

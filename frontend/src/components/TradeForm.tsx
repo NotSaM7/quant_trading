@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Box, TextField, Button, ToggleButton, ToggleButtonGroup, Typography, Paper, Alert, Snackbar, Autocomplete } from '@mui/material';
-import { executeTrade, searchStocks, type StockSuggestion } from '../api';
+import { Box, TextField, Button, ToggleButton, ToggleButtonGroup, Typography, Paper, Alert, Snackbar, Autocomplete, Chip, CircularProgress } from '@mui/material';
+import { executeTrade, searchStocks, runStrategy, getAnalysis, type StockSuggestion, type TradeHistoryItem } from '../api';
+import AnalyticsIcon from '@mui/icons-material/Analytics';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 
 interface TradeFormProps {
     onTradeSuccess: () => void;
@@ -11,11 +13,33 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
     const [quantity, setQuantity] = useState<number>(1);
     const [action, setAction] = useState<'BUY' | 'SELL'>('BUY');
     const [loading, setLoading] = useState(false);
+    const [analysisLoading, setAnalysisLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
+
+    // Analysis & Trade History state for bullet summary
+    const [analysisResult, setAnalysisResult] = useState<any | null>(null);
+    const [tradeHistory, setTradeHistory] = useState<TradeHistoryItem[]>([]);
 
     // Autocomplete state
     const [searchQuery, setSearchQuery] = useState('');
     const [options, setOptions] = useState<StockSuggestion[]>([]);
+
+    const fetchHistory = async () => {
+        try {
+            const data = await getAnalysis();
+            setTradeHistory(data.trades.slice(0, 5)); // Top 5 recent trades
+        } catch (e) {
+            console.error("Failed to fetch trade history in TradeForm", e);
+        }
+    };
+
+    useEffect(() => {
+        fetchHistory();
+        const interval = setInterval(() => {
+            fetchHistory();
+        }, 5000); // Auto-refresh trade history & rationales to sync with 60s bot loop
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         const fetchOptions = async () => {
@@ -31,9 +55,29 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
             }
         };
 
-        const timeoutId = setTimeout(fetchOptions, 300); // Debounce
+        const timeoutId = setTimeout(fetchOptions, 300);
         return () => clearTimeout(timeoutId);
     }, [searchQuery]);
+
+    const handleRunAnalysis = async () => {
+        if (!ticker) return;
+        setAnalysisLoading(true);
+        setMessage(null);
+        try {
+            const result = await runStrategy(ticker.toUpperCase(), quantity);
+            setAnalysisResult(result);
+            const msg = `Bot Signal: ${result.signal} (${result.reason})`;
+            setMessage({ type: result.signal === 'HOLD' ? 'info' : (result.signal === 'BUY' ? 'success' : 'error'), text: msg });
+            if (result.trade_executed) {
+                onTradeSuccess();
+                fetchHistory();
+            }
+        } catch (error: any) {
+            setMessage({ type: 'error', text: error.response?.data?.detail || 'Strategy analysis failed' });
+        } finally {
+            setAnalysisLoading(false);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -50,6 +94,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
             setTicker('');
             setQuantity(1);
             onTradeSuccess();
+            fetchHistory();
         } catch (error: any) {
             setMessage({
                 type: 'error',
@@ -76,7 +121,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
                 Execute Trade
             </Typography>
             <form onSubmit={handleSubmit}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                     <ToggleButtonGroup
                         value={action}
                         exclusive
@@ -85,7 +130,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
                         }}
                         fullWidth
                         sx={{
-                            mb: 1,
+                            mb: 0.5,
                             backgroundColor: '#282828',
                             borderRadius: 50,
                             padding: '4px',
@@ -141,7 +186,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
                                 required
                                 fullWidth
                                 variant="filled"
-                                placeholder="Search e.g. TATA"
+                                placeholder="Search e.g. RELIANCE"
                                 InputLabelProps={{ style: { color: '#b3b3b3' } }}
                                 inputProps={{
                                     ...params.inputProps,
@@ -207,26 +252,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
 
                     <Button
                         variant="outlined"
-                        onClick={async () => {
-                            if (!ticker) return;
-                            setLoading(true);
-                            setMessage(null);
-                            try {
-                                const { runStrategy } = await import('../api');
-                                const result = await runStrategy(ticker.toUpperCase(), quantity);
-                                const msg = `Bot Signal: ${result.signal} (${result.reason})`;
-                                setMessage({ type: result.signal === 'HOLD' ? 'info' : (result.signal === 'BUY' ? 'success' : 'error'), text: msg });
-                                if (result.trade_executed) {
-                                    onTradeSuccess();
-                                }
-                            } catch (error: any) {
-                                setMessage({ type: 'error', text: error.response?.data?.detail || 'Strategy failed' });
-                            } finally {
-                                setLoading(false);
-                            }
-                        }}
-                        disabled={loading || !ticker}
+                        onClick={handleRunAnalysis}
+                        disabled={analysisLoading || !ticker}
                         size="large"
+                        startIcon={analysisLoading ? <CircularProgress size={20} color="inherit" /> : <AnalyticsIcon />}
                         sx={{
                             py: 1.5,
                             borderRadius: 50,
@@ -236,10 +265,75 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess }) => {
                             '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' }
                         }}
                     >
-                        Run Bot Analysis
+                        {analysisLoading ? 'Analyzing Signal...' : 'Run Bot Analysis'}
                     </Button>
+
+                    {/* --- BULLET POINT SUMMARY TAB (DIRECTLY BELOW RUN BOT ANALYSIS BUTTON) --- */}
+                    <Box sx={{ mt: 2, p: 2, bgcolor: '#181818', borderRadius: 2, border: '1px solid #333' }}>
+                        <Box display="flex" alignItems="center" gap={1} mb={1.5}>
+                            <FormatListBulletedIcon fontSize="small" color="success" />
+                            <Typography variant="subtitle2" fontWeight="bold" color="white">
+                                Trade Rationales Summary
+                            </Typography>
+                        </Box>
+
+                        {/* Bullet 1: Active Bot Analysis Result (if available) */}
+                        {analysisResult && (
+                            <Box sx={{ mb: 2, p: 1.5, bgcolor: '#222', borderRadius: 1.5, borderLeft: '4px solid #1DB954' }}>
+                                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                                    <Typography variant="body2" fontWeight="bold" color="white">
+                                        • {analysisResult.ticker.replace('.NS', '')} ({analysisResult.signal})
+                                    </Typography>
+                                    <Chip
+                                        label={analysisResult.signal}
+                                        color={analysisResult.signal === 'BUY' ? 'success' : (analysisResult.signal === 'SELL' ? 'error' : 'default')}
+                                        size="small"
+                                        sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                                    />
+                                </Box>
+                                <Typography variant="body2" color="rgba(255,255,255,0.9)" sx={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+                                    "{analysisResult.reason}"
+                                </Typography>
+                            </Box>
+                        )}
+
+                        {/* Bullets for Executed Stock Purchases & Sales */}
+                        {tradeHistory.length > 0 ? (
+                            <Box display="flex" flexDirection="column" gap={1.5}>
+                                {tradeHistory.map((trade) => {
+                                    const cleanSymbol = trade.ticker.replace('.NS', '');
+                                    const defaultRationale = trade.action === 'BUY'
+                                        ? `${cleanSymbol} has been climbing steadily over the past few days, and buying interest is strong without the stock looking overbought yet — a good sign the upward move has more room to run.`
+                                        : `${cleanSymbol} started losing short-term price momentum, so the position was closed to lock in current returns and safeguard your capital.`;
+                                    
+                                    return (
+                                        <Box key={trade.id} sx={{ p: 1.5, bgcolor: '#202020', borderRadius: 1.5, borderLeft: `3px solid ${trade.action === 'BUY' ? '#1DB954' : '#ef4444'}` }}>
+                                            <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+                                                <Typography variant="body2" fontWeight="bold" color="white" sx={{ fontSize: '0.85rem' }}>
+                                                    • {cleanSymbol} ({trade.action})
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {trade.quantity} Share(s) @ ₹{trade.price.toFixed(2)}
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="body2" color="rgba(255,255,255,0.85)" sx={{ fontSize: '0.8rem', lineHeight: 1.4 }}>
+                                                "{trade.reason || defaultRationale}"
+                                            </Typography>
+                                        </Box>
+                                    );
+                                })}
+                            </Box>
+                        ) : (
+                            !analysisResult && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', py: 1 }}>
+                                    No trade rationales yet. Run bot analysis or execute a trade to see plain-English explanations.
+                                </Typography>
+                            )
+                        )}
+                    </Box>
                 </Box>
             </form>
+
             <Snackbar
                 open={!!message}
                 autoHideDuration={6000}

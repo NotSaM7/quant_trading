@@ -58,8 +58,9 @@ const Dashboard: React.FC = () => {
         return () => clearInterval(interval);
     }, []);
 
-    const formatCurrency = (value: number) => {
-        return value.toLocaleString('en-IN', {
+    const formatCurrency = (value: number | undefined | null) => {
+        if (value === undefined || value === null || isNaN(Number(value))) return "₹0.00";
+        return Number(value).toLocaleString('en-IN', {
             style: 'currency',
             currency: 'INR',
             maximumFractionDigits: 2
@@ -116,7 +117,7 @@ const Dashboard: React.FC = () => {
 
             {tabIndex === 0 ? (
                 // PORTFOLIO VIEW
-                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', width: '100%' }}>
                     {/* Left Side: Trade Form */}
                     <Box sx={{ flex: '1 1 350px', minWidth: '300px' }}>
                         <TradeForm onTradeSuccess={fetchPortfolio} />

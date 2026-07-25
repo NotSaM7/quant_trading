@@ -10,7 +10,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         <Box
             sx={{
                 marginLeft: 'var(--nav-width)', // Offset for fixed sidebar
+                width: 'calc(100% - var(--nav-width))',
+                boxSizing: 'border-box',
                 flexGrow: 1,
+                minHeight: '100vh',
                 height: '100vh',
                 overflowY: 'auto',
                 background: 'linear-gradient(180deg, #1e1e1e 0%, var(--bg-primary) 40%)', // Typical Spotify gradient

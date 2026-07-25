@@ -63,6 +63,7 @@ export interface TradeHistoryItem {
     timestamp: string;
     pnl?: number;
     strategy?: string;
+    reason?: string;
 }
 
 export interface AnalysisMetrics {
@@ -90,6 +91,45 @@ export const getAutoStatus = async (): Promise<{ is_running: boolean }> => {
 
 export const getAnalysis = async (): Promise<AnalysisMetrics> => {
     const response = await api.get<AnalysisMetrics>('/analysis');
+    return response.data;
+};
+
+export interface BacktestTrade {
+    entry_date: string;
+    exit_date: string;
+    action: string;
+    entry_price: number;
+    exit_price: number;
+    quantity: number;
+    pnl: number;
+    pnl_pct: number;
+    exit_reason: string;
+}
+
+export interface EquityCurvePoint {
+    date: string;
+    equity: number;
+    close: number;
+}
+
+export interface BacktestResult {
+    ticker: string;
+    months: number;
+    initial_capital: number;
+    final_equity: number;
+    total_return_pct: number;
+    win_rate: number;
+    total_trades: number;
+    max_drawdown_pct: number;
+    sharpe_ratio: number;
+    trades: BacktestTrade[];
+    equity_curve: EquityCurvePoint[];
+}
+
+export const runBacktest = async (ticker: string = 'RELIANCE.NS', months: number = 12): Promise<BacktestResult> => {
+    const response = await api.get<BacktestResult>('/backtest', {
+        params: { ticker, months }
+    });
     return response.data;
 };
 
