@@ -63,43 +63,56 @@ def read_root():
 
 @app.post("/api/auth/register", response_model=TokenResponse)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(UserDB).filter(UserDB.email == user_data.email.lower().strip()).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
+    init_db()
+    try:
+        existing = db.query(UserDB).filter(UserDB.email == user_data.email.lower().strip()).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="User with this email already exists")
 
-    user_id = str(uuid.uuid4())
-    hashed_pwd = hash_password(user_data.password)
+        user_id = str(uuid.uuid4())
+        hashed_pwd = hash_password(user_data.password)
 
-    new_user = UserDB(
-        id=user_id,
-        email=user_data.email.lower().strip(),
-        hashed_password=hashed_pwd,
-        name=user_data.name.strip()
-    )
-    new_portfolio = PortfolioDB(
-        id=str(uuid.uuid4()),
-        user_id=user_id,
-        cash=100000.0
-    )
+        new_user = UserDB(
+            id=user_id,
+            email=user_data.email.lower().strip(),
+            hashed_password=hashed_pwd,
+            name=user_data.name.strip()
+        )
+        new_portfolio = PortfolioDB(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            cash=100000.0
+        )
 
-    db.add(new_user)
-    db.add(new_portfolio)
-    db.commit()
-    db.refresh(new_user)
+        db.add(new_user)
+        db.add(new_portfolio)
+        db.commit()
+        db.refresh(new_user)
 
-    user_res = UserResponse(id=new_user.id, name=new_user.name, email=new_user.email)
-    token = create_access_token({"sub": new_user.id, "email": new_user.email})
-    return TokenResponse(access_token=token, user=user_res)
+        user_res = UserResponse(id=new_user.id, name=new_user.name, email=new_user.email)
+        token = create_access_token({"sub": new_user.id, "email": new_user.email})
+        return TokenResponse(access_token=token, user=user_res)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Registration Error: {str(e)}")
 
 @app.post("/api/auth/login", response_model=TokenResponse)
 def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(UserDB).filter(UserDB.email == credentials.email.lower().strip()).first()
-    if not user or not verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    init_db()
+    try:
+        user = db.query(UserDB).filter(UserDB.email == credentials.email.lower().strip()).first()
+        if not user or not verify_password(credentials.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    user_res = UserResponse(id=user.id, name=user.name, email=user.email)
-    token = create_access_token({"sub": user.id, "email": user.email})
-    return TokenResponse(access_token=token, user=user_res)
+        user_res = UserResponse(id=user.id, name=user.name, email=user.email)
+        token = create_access_token({"sub": user.id, "email": user.email})
+        return TokenResponse(access_token=token, user=user_res)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login Error: {str(e)}")
 
 @app.get("/api/auth/me", response_model=UserResponse)
 def get_me(current_user: UserResponse = Depends(get_current_user)):
