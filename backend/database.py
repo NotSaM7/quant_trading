@@ -15,6 +15,9 @@ if DATABASE_URL:
     # Fix for Vercel/Heroku legacy postgres:// URL format
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    if "sslmode" not in DATABASE_URL and "sqlite" not in DATABASE_URL:
+        separator = "&" if "?" in DATABASE_URL else "?"
+        DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 else:
     # Local fallback to SQLite

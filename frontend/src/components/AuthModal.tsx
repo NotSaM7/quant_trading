@@ -41,8 +41,8 @@ const AuthModal: React.FC = () => {
             }
             closeAuthModal();
         } catch (err: any) {
-            const msg = err.response?.data?.detail || "Authentication failed. Please check your credentials.";
-            setError(msg);
+            const msg = err.response?.data?.detail || err.message || "Authentication failed. Please check your credentials.";
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
         } finally {
             setLoading(false);
         }
