@@ -1,20 +1,29 @@
 # Quant Trading App 📈
 
-A modern, high-performance quantitative trading platform built with **React**, **FastAPI**, and **Python**. Features a Spotify-inspired dark mode UI, automated algorithmic trading, dynamic ATR position sizing, stop-loss protection, plain-English retail trade rationales, and 6–12 month backtesting.
+A modern, high-performance quantitative trading platform built with **React**, **FastAPI**, **SQLAlchemy**, and **Supabase PostgreSQL**. Features a Spotify-inspired dark mode UI, native JWT user authentication, parallel 40-company quantitative strategy execution, ATR volatility position sizing, stop-loss protection, plain-English retail trade rationales, and 6–12 month historical backtesting.
 
-![Dashboard Screenshot 1](dashboard_1.png)
-![Dashboard Screenshot 2](dashboard_2.png)
+![QuantBot Login & Account Modal](./docs/assets/login_auth_modal.png)
 
 ---
 
 ## ✨ Key Features & Strategy Highlights
 
-### 🤖 Algorithmic Strategy Engine (`SMA5 / SMA20 + RSI14 + ATR14`)
-- **Dual-Momentum Confirmation Filter**: A BUY signal requires both an $\text{SMA}_5 > \text{SMA}_{20}$ bullish crossover **and** an $\text{RSI}_{14} > 50$ momentum confirmation filter to prevent false breakouts.
-- **ATR Volatility Position Sizing**: Orders are sized dynamically using 14-day Average True Range ($\text{ATR}_{14}$) volatility rather than static share amounts, risking no more than 2.0% of portfolio equity per trade.
-- **Automated Stop-Loss Protection**: An automated risk monitor checks active holdings during every execution pass. Positions encountering a drawdown of $\ge 3.0\%$ trigger an emergency market `STOP_LOSS` sell order.
-- **Dynamic Trade Rationales**: Generates 1–2 short, plain-English sentences for retail investors explaining the technical reason why each stock was purchased or sold without complex jargon.
-- **Live Scanning Bot (60s Loop)**: Scans 40 top NSE stocks every 60 seconds with auto-refreshing summary cards on the UI.
+### 🔒 User Authentication & Isolated Supabase Portfolios
+- **Native JWT Token Authentication**: Secure sign-in and account registration using `bcrypt` password hashing and JSON Web Tokens.
+- **Supabase PostgreSQL Integration**: Real-time cloud database connection via Supabase Transaction Pooler (IPv4).
+- **Isolated User Portfolios**: Every registered trader gets an isolated portfolio balance (₹100,000 starting cash), position tracking, and personal trade history.
+- **Clean Guest State Reset**: Unauthenticated guest users see a clean, zeroed-out template without exposing other users' data.
+
+---
+
+### ⚡ Parallel 40-Company Quantitative Strategy Engine (`SMA5 / SMA20 + RSI14 + ATR14`)
+- **Parallel Multi-Threaded Scan**: Scans **ALL 40 top Indian companies** (`INDIAN_STOCKS`) in parallel using a 10-worker thread pool in ~1.8 seconds.
+- **Quantitative Momentum Ranking**: Computes $SMA_5$, $SMA_{20}$, $RSI_{14}$, and $ATR_{14}$ for every company and ranks all 40 stocks by Quantitative Momentum Score:
+  $$\text{Score} = \frac{SMA_5 - SMA_{20}}{SMA_{20}} \times 100 + (RSI_{14} - 50)$$
+- **Multi-Stock Purchase Diversification**: Allocates capital across the top 4 candidate companies (`HCLTECH`, `TCS`, `TITAN`, `ONGC`, `ICICIBANK`, etc.) rather than focusing on a single stock.
+- **Automated Stop-Loss Protection**: Emergency monitor checks active positions during every pass. Positions incurring a drawdown of $\ge 3.0\%$ trigger an automated `STOP_LOSS` market sell.
+- **Dynamic Retail Trade Rationales**: Generates 1–2 plain-English sentences for every trade explaining the technical indicators without complex jargon.
+- **60-Second Auto-Trading Bot Ticker**: Continuous 60-second ticker in the frontend triggers automated market scans and syncs portfolio metrics directly to Supabase.
 
 ---
 
@@ -27,20 +36,21 @@ A modern, high-performance quantitative trading platform built with **React**, *
 
 ### 💼 Portfolio Analytics & Watchlist
 - Track **Holdings**, **Total Equity**, **Cash Balance**, and real-time **P&L**.
-- Verified 40-stock watchlist including top Indian market leaders (`RELIANCE.NS`, `TCS.NS`, `INFY.NS`, `TATASTEEL.NS`, `TMPV.NS`, `ETERNAL.NS`, `PAYTM.NS`, `IEX.NS`, `IRCTC.NS`, `BSE.NS`, `CDSL.NS`).
+- Verified 40-stock watchlist including top Indian market leaders (`RELIANCE.NS`, `TCS.NS`, `INFY.NS`, `ICICIBANK.NS`, `HCLTECH.NS`, `TITAN.NS`, `ONGC.NS`, `WIPRO.NS`, `PAYTM.NS`, `IEX.NS`, `BSE.NS`).
 
 ---
 
 ### 🎨 Premium Dark UI
 - Modern Spotify-inspired dark mode UI built with React, Material UI, and Recharts.
-- Responsive flex layout with zero fixed pixel overflows.
+- Responsive flex layout with dynamic sidebar drawer navigation and modal overlays.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React, TypeScript, Material UI, Recharts, Vite
-- **Backend**: Python, FastAPI, Pandas, NumPy, yfinance, Pydantic
+- **Frontend**: React, TypeScript, Material UI, Recharts, Vite, Axios
+- **Backend**: Python, FastAPI, SQLAlchemy, PostgreSQL (`psycopg2`), Pandas, NumPy, yfinance, Pydantic
+- **Database**: Supabase PostgreSQL (IPv4 Transaction Pooler)
 - **Data Source**: Yahoo Finance API
 
 ---

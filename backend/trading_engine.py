@@ -120,12 +120,50 @@ class TradingEngine:
         except Exception as e:
             print(f"Error saving history: {e}")
 
+    def get_analysis_db(self, db: Session, user_id: Optional[str] = None) -> AnalysisMetrics:
+        portfolio = self._get_or_create_portfolio(db, user_id=user_id)
+        if not portfolio:
+            return AnalysisMetrics(total_pnl=0.0, win_rate=0.0, total_trades=0, profit_factor=0.0, trades=[])
+
+        db_trades = db.query(TradeDB).filter(TradeDB.user_id == portfolio.user_id).order_by(TradeDB.timestamp.desc()).all()
+
+        trade_items = []
+        for t in db_trades:
+            trade_items.append(TradeHistoryItem(
+                id=t.id,
+                ticker=t.ticker,
+                action=t.action,
+                quantity=t.quantity,
+                price=t.price,
+                timestamp=t.timestamp,
+                pnl=t.pnl,
+                strategy=t.strategy,
+                reason=t.reason
+            ))
+
+        total_pnl = sum(item.pnl for item in trade_items if item.pnl is not None)
+        total_trades = len(trade_items)
+        winning_trades = len([item for item in trade_items if item.pnl and item.pnl > 0])
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
+
+        gross_profit = sum(item.pnl for item in trade_items if item.pnl and item.pnl > 0)
+        gross_loss = abs(sum(item.pnl for item in trade_items if item.pnl and item.pnl < 0))
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0.0)
+
+        return AnalysisMetrics(
+            total_pnl=total_pnl,
+            win_rate=win_rate,
+            total_trades=total_trades,
+            profit_factor=profit_factor,
+            trades=trade_items
+        )
+
     def get_analysis(self) -> AnalysisMetrics:
         total_pnl = sum(item.pnl for item in self.history if item.pnl is not None)
         total_trades = len(self.history)
         winning_trades = len([item for item in self.history if item.pnl and item.pnl > 0])
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-        
+
         gross_profit = sum(item.pnl for item in self.history if item.pnl and item.pnl > 0)
         gross_loss = abs(sum(item.pnl for item in self.history if item.pnl and item.pnl < 0))
         profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0)
@@ -497,13 +535,12 @@ class TradingEngine:
         )
 
     def _get_or_create_portfolio(self, db: Session, user_id: Optional[str] = None) -> Optional[PortfolioDB]:
-        portfolio = None
-        if user_id:
-            portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
+        if not user_id:
+            return None
+
+        portfolio = db.query(PortfolioDB).filter(PortfolioDB.user_id == user_id).first()
         if not portfolio:
-            portfolio = db.query(PortfolioDB).first()
-        if not portfolio:
-            user = db.query(UserDB).filter(UserDB.id == user_id).first() if user_id else db.query(UserDB).first()
+            user = db.query(UserDB).filter(UserDB.id == user_id).first()
             if user:
                 portfolio = PortfolioDB(id=str(uuid.uuid4()), user_id=user.id, cash=100000.0)
                 db.add(portfolio)

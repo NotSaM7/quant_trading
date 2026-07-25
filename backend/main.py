@@ -192,8 +192,9 @@ def get_auto_status():
 
 @app.get("/api/analysis", response_model=AnalysisMetrics)
 @app.get("/analysis", response_model=AnalysisMetrics)
-def get_analysis():
-    return trading_engine_instance.get_analysis()
+def get_analysis(current_user: Optional[UserResponse] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
+    user_id = current_user.id if current_user else None
+    return trading_engine_instance.get_analysis_db(db, user_id=user_id)
 
 @app.get("/api/backtest", response_model=BacktestResult)
 @app.get("/backtest", response_model=BacktestResult)
