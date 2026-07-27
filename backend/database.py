@@ -4,7 +4,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Generator
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, ForeignKey, text
 from sqlalchemy.engine.url import make_url, URL
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
@@ -91,6 +91,8 @@ class PositionDB(Base):
     quantity = Column(Integer, nullable=False)
     average_price = Column(Float, nullable=False)
     current_price = Column(Float, nullable=False)
+    peak_price = Column(Float, nullable=True)           # Highest price seen while holding (trailing stop tracks this)
+    trailing_stop_price = Column(Float, nullable=True)  # Computed: peak_price - (2 × ATR14)
 
     user = relationship("UserDB", back_populates="positions")
 
@@ -115,6 +117,18 @@ def init_db():
         Base.metadata.create_all(bind=engine)
     except Exception as e:
         print(f"Database init warning: {e}")
+
+    # Safe migrations: add new columns to existing tables without losing data
+    for col_sql in [
+        "ALTER TABLE positions ADD COLUMN peak_price FLOAT",
+        "ALTER TABLE positions ADD COLUMN trailing_stop_price FLOAT",
+    ]:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(col_sql))
+                conn.commit()
+        except Exception:
+            pass  # Column already exists — safe to ignore
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

@@ -1,87 +1,167 @@
-import React, { useState } from 'react';
-import { Box, Typography, IconButton, Drawer, Button, Avatar, Chip } from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
-import LogoutIcon from '@mui/icons-material/Logout';
+import React from 'react';
+import { Box, Typography, Button, Avatar } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
-import Sidebar from './Sidebar';
+import KeyIcon from '@mui/icons-material/Key';
 import { useAuth } from '../context/AuthContext';
 import AuthModal from './AuthModal';
+import { TickerStrip } from './TickerStrip';
 
 interface MainLayoutProps {
     children: React.ReactNode;
+    activeTab?: number;
+    onTabChange?: (tab: number) => void;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-    const [mobileOpen, setMobileOpen] = useState(false);
+const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabChange }) => {
     const { user, isAuthenticated, logout, openAuthModal } = useAuth();
-
-    const handleDrawerToggle = () => {
-        setMobileOpen(!mobileOpen);
-    };
 
     return (
         <Box
             sx={{
-                marginLeft: { xs: 0, md: 'var(--nav-width)' },
-                width: { xs: '100%', md: 'calc(100% - var(--nav-width))' },
+                width: '100%',
                 boxSizing: 'border-box',
                 flexGrow: 1,
                 minHeight: '100vh',
-                height: '100vh',
-                overflowY: 'auto',
-                background: 'linear-gradient(180deg, #1e1e1e 0%, var(--bg-primary) 40%)',
+                background: 'transparent',
                 position: 'relative',
+                zIndex: 1,
             }}
         >
-            {/* Top Navigation Header */}
+            {/* Top Live Scrolling Ticker Bar */}
+            <TickerStrip />
+
+            {/* Top Navigation Header (100% Matching ui_demo/index.html) */}
             <Box
+                component="nav"
                 sx={{
                     position: 'sticky',
                     top: 0,
                     height: '64px',
                     width: '100%',
                     zIndex: 1100,
-                    background: 'rgba(0,0,0,0.7)',
-                    backdropFilter: 'blur(10px)',
+                    background: 'rgba(18, 18, 18, 0.85)',
+                    backdropFilter: 'blur(24px)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    px: { xs: 2, sm: 3 },
-                    borderBottom: '1px solid rgba(255,255,255,0.08)'
+                    px: { xs: 2, sm: 4 },
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
                 }}
             >
-                {/* Mobile Menu Button & Title */}
-                <Box display="flex" alignItems="center" gap={1}>
-                    <IconButton
-                        color="inherit"
-                        aria-label="open drawer"
-                        edge="start"
-                        onClick={handleDrawerToggle}
-                        sx={{ display: { md: 'none' }, color: 'white' }}
+                {/* Brand Logo & Name (Green Circle Avatar) */}
+                <Box display="flex" alignItems="center" gap={1.5}>
+                    <Box
+                        sx={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: '50%',
+                            background: '#1DB954',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '16px',
+                            boxShadow: '0 0 20px rgba(29, 185, 84, 0.4)',
+                            color: '#000'
+                        }}
                     >
-                        <MenuIcon />
-                    </IconButton>
-                    <Typography variant="h6" fontWeight="bold" sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1 }}>
-                        <span>📊</span> QuantBot
+                        📊
+                    </Box>
+                    <Typography variant="h6" fontWeight="800" sx={{ color: 'white', letterSpacing: '-0.5px', fontFamily: '"Outfit", sans-serif' }}>
+                        QuantBot
                     </Typography>
+                </Box>
+
+                {/* Center: Spotify White Pill Tabs (Exact ui_demo/index.html) */}
+                <Box display="flex" gap={1}>
+                    <Button
+                        onClick={() => onTabChange && onTabChange(0)}
+                        sx={{
+                            px: 2.8,
+                            py: 0.9,
+                            borderRadius: '50px',
+                            fontSize: '13px',
+                            fontWeight: activeTab === 0 ? 800 : 700,
+                            fontFamily: '"Outfit", sans-serif',
+                            textTransform: 'none',
+                            color: activeTab === 0 ? '#000000' : '#FFFFFF',
+                            bgcolor: activeTab === 0 ? '#FFFFFF' : '#2a2a2a',
+                            boxShadow: activeTab === 0 ? '0 4px 16px rgba(255,255,255,0.2)' : 'none',
+                            transition: 'all 0.2s ease',
+                            '&:hover': { bgcolor: activeTab === 0 ? '#FFFFFF' : '#333333' }
+                        }}
+                    >
+                        Portfolio
+                    </Button>
+                    <Button
+                        onClick={() => onTabChange && onTabChange(1)}
+                        sx={{
+                            px: 2.8,
+                            py: 0.9,
+                            borderRadius: '50px',
+                            fontSize: '13px',
+                            fontWeight: activeTab === 1 ? 800 : 700,
+                            fontFamily: '"Outfit", sans-serif',
+                            textTransform: 'none',
+                            color: activeTab === 1 ? '#000000' : '#FFFFFF',
+                            bgcolor: activeTab === 1 ? '#FFFFFF' : '#2a2a2a',
+                            boxShadow: activeTab === 1 ? '0 4px 16px rgba(255,255,255,0.2)' : 'none',
+                            transition: 'all 0.2s ease',
+                            '&:hover': { bgcolor: activeTab === 1 ? '#FFFFFF' : '#333333' }
+                        }}
+                    >
+                        Analysis
+                    </Button>
                 </Box>
 
                 {/* Right Side: Auth User Controls */}
                 <Box display="flex" alignItems="center" gap={2}>
                     {isAuthenticated && user ? (
                         <Box display="flex" alignItems="center" gap={1.5}>
-                            <Chip
-                                avatar={<Avatar sx={{ bgcolor: '#1DB954', color: 'black', fontWeight: 'bold' }}>{user.name.charAt(0).toUpperCase()}</Avatar>}
-                                label={user.name}
-                                variant="outlined"
-                                sx={{ color: 'white', borderColor: '#333', bgcolor: '#181818', fontWeight: 600 }}
-                            />
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                    bgcolor: 'rgba(0, 0, 0, 0.5)',
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    borderRadius: '50px',
+                                    py: '4px',
+                                    px: '12px',
+                                    fontSize: '13px',
+                                    fontWeight: 700
+                                }}
+                            >
+                                <Avatar
+                                    sx={{
+                                        width: 26,
+                                        height: 26,
+                                        bgcolor: '#1DB954',
+                                        color: '#000',
+                                        fontWeight: 800,
+                                        fontSize: '13px'
+                                    }}
+                                >
+                                    {user.name.charAt(0).toUpperCase()}
+                                </Avatar>
+                                <span style={{ color: '#FFFFFF', fontFamily: '"Outfit", sans-serif' }}>{user.name}</span>
+                            </Box>
                             <Button
                                 variant="outlined"
                                 size="small"
                                 onClick={logout}
-                                startIcon={<LogoutIcon fontSize="small" />}
-                                sx={{ color: '#b3b3b3', borderColor: '#444', borderRadius: 20, '&:hover': { color: 'white', borderColor: '#666' } }}
+                                startIcon={<KeyIcon fontSize="small" />}
+                                sx={{
+                                    color: '#B3B3B3',
+                                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                                    borderRadius: 50,
+                                    px: 2,
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    textTransform: 'none',
+                                    fontFamily: '"Outfit", sans-serif',
+                                    transition: 'all 0.2s ease',
+                                    '&:hover': { color: 'white', borderColor: 'white', bgcolor: 'rgba(255, 255, 255, 0.08)' }
+                                }}
                             >
                                 Sign Out
                             </Button>
@@ -93,16 +173,22 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                                 size="small"
                                 onClick={() => openAuthModal('login')}
                                 startIcon={<PersonIcon fontSize="small" />}
-                                sx={{ color: 'white', borderColor: '#444', borderRadius: 20, px: 2 }}
+                                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 50, px: 2 }}
                             >
                                 Sign In
                             </Button>
                             <Button
                                 variant="contained"
-                                color="success"
                                 size="small"
                                 onClick={() => openAuthModal('register')}
-                                sx={{ borderRadius: 20, px: 2, fontWeight: 'bold' }}
+                                sx={{
+                                    borderRadius: 50,
+                                    px: 2,
+                                    fontWeight: 800,
+                                    background: '#1DB954',
+                                    color: '#000',
+                                    '&:hover': { background: '#1ed760' }
+                                }}
                             >
                                 Create Account
                             </Button>
@@ -111,25 +197,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 </Box>
             </Box>
 
-            {/* Mobile Navigation Drawer */}
-            <Drawer
-                variant="temporary"
-                open={mobileOpen}
-                onClose={handleDrawerToggle}
-                ModalProps={{ keepMounted: true }}
-                sx={{
-                    display: { xs: 'block', md: 'none' },
-                    '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 240, bgcolor: 'black' },
-                }}
-            >
-                <Sidebar />
-            </Drawer>
-
             {/* Auth Modal Component */}
             <AuthModal />
 
             {/* Page Content Container */}
-            <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, minHeight: 'calc(100vh - 64px)' }}>
+            <Box component="main" sx={{ p: { xs: 2, sm: 3, md: 4 }, minHeight: 'calc(100vh - 92px)', maxWidth: '1400px', mx: 'auto', position: 'relative', zindex: 1 }}>
                 {children}
             </Box>
         </Box>

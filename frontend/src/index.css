@@ -1,112 +1,179 @@
-/* Import Google Fonts - Inter & Playfair Display for a premium feel */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap');
+/* Import Google Fonts - Outfit & JetBrains Mono for exact Demo UI alignment */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
 :root {
-  /* Spotify-inspired Theme Palette */
-  --bg-primary: #000000;
-  /* Deepest Black */
-  --bg-secondary: #121212;
-  /* Sidebar/Card Background */
-  --bg-elevated: #282828;
-  /* Card Hover/Highlight */
-  --bg-glass: rgba(18, 18, 18, 0.9);
+  --bg: #000000;
+  --bg2: #121212;
+  --card: #121212;
+  --card-hover: #282828;
+  --card-border: rgba(255, 255, 255, 0.06);
+  --pill-bg: #2a2a2a;
+  --teal: #1DB954;
+  --green: #1DB954;
+  --green-hover: #1ed760;
+  --green-dim: rgba(29, 185, 84, 0.15);
+  --red: #E91429;
+  --red-dim: rgba(233, 20, 41, 0.15);
+  --purple: #5038a0;
+  --text: #FFFFFF;
+  --text-muted: #B3B3B3;
+  --text-dim: #7c7c8a;
+  --font: 'Outfit', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
 
-  --text-primary: #FFFFFF;
-  /* Pure White */
-  --text-secondary: #B3B3B3;
-  /* Light Grey */
-  --text-subdued: #A7A7A7;
-
-  --accent-primary: #1DB954;
-  /* Spotify Green */
-  --accent-hover: #1ed760;
-  /* Brighter Green for Hover */
-
-  --accent-error: #ef4444;
-  /* Red 500 */
-  --accent-success: #1DB954;
-  /* Same as primary */
-
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
-
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-
-  --nav-width: 240px;
+  --nav-width: 0px;
   --header-height: 64px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  display: block;
-  /* changed from flex center */
-  min-width: 320px;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
   min-height: 100vh;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  overflow: hidden;
-  /* Prevent body scroll, handle in MainLayout */
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Spotify Ambient Purple Gradient Overlay - Exact ui_demo/index.html */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(67, 35, 113, 0.6) 0%, rgba(30, 18, 55, 0.35) 280px, rgba(0, 0, 0, 0) 500px),
+    radial-gradient(circle at 15% 10%, rgba(80, 56, 160, 0.35) 0%, transparent 45%),
+    radial-gradient(circle at 85% 90%, rgba(29, 185, 84, 0.08) 0%, transparent 45%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 #root {
   width: 100%;
-  height: 100vh;
-  display: flex;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-sans);
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-top: 0;
+/* --- ANIMATIONS MATCHING DEMO UI --- */
+@keyframes tickerScroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
-/* Utilities */
-.text-primary {
-  color: var(--text-primary);
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.text-secondary {
-  color: var(--text-secondary);
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.text-accent {
-  color: var(--accent-primary);
+@keyframes rowFadeIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-.bg-primary {
-  background-color: var(--bg-primary);
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(29, 185, 84, 0.6); }
+  50%      { box-shadow: 0 0 0 6px rgba(29, 185, 84, 0); }
 }
 
-.bg-secondary {
-  background-color: var(--bg-secondary);
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(29, 185, 84, 0.4); }
+  50%      { box-shadow: 0 0 20px 6px rgba(29, 185, 84, 0.15); }
 }
 
-/* Card Styles */
-.spotify-card {
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
-  /* Spotify uses slightly rounded corners */
-  padding: 16px;
-  transition: background-color 0.3s ease;
-  cursor: pointer;
-  height: 100%;
+@keyframes inputFlash {
+  0%   { border-color: var(--teal); box-shadow: 0 0 0 4px rgba(29, 185, 84, 0.35); background: rgba(29, 185, 84, 0.08); }
+  60%  { border-color: var(--teal); box-shadow: 0 0 0 6px rgba(29, 185, 84, 0.15); }
+  100% { border-color: var(--card-border); box-shadow: none; background: rgba(0, 0, 0, 0.3); }
 }
 
-.spotify-card:hover {
-  background-color: var(--bg-elevated);
+.input-flash {
+  animation: inputFlash 0.9s ease forwards;
 }
 
-/* Scrollbar Styling - Thinner and Darker */
+/* Button Glow Hover Effects matching Demo UI */
+.btn-execute {
+  box-shadow: 0 4px 20px rgba(29,185,84,0.4), 0 0 15px rgba(29,185,84,0.25) !important;
+}
+
+.btn-execute:hover:not(:disabled) {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 30px rgba(29,185,84,0.5), 0 0 25px rgba(29,185,84,0.35) !important;
+}
+
+.btn-scan {
+  box-shadow: 0 0 15px rgba(29,185,84,0.15) !important;
+}
+
+.btn-scan:hover:not(:disabled) {
+  background: rgba(29, 185, 84, 0.15) !important;
+  border-color: rgba(29, 185, 84, 0.5) !important;
+  box-shadow: 0 0 22px rgba(29,185,84,0.3) !important;
+}
+
+/* Card Styles matching Demo UI (Exact 12px border radius & sizing) */
+.stat-card-glass {
+  background: #181818;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 20px 24px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  animation: fadeInUp 0.5s ease both;
+}
+
+.stat-card-glass:hover {
+  background: #282828;
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+.stat-card-glass::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 12px 12px 0 0;
+}
+
+.stat-card-glass.blue::before { background: linear-gradient(90deg, #3b82f6, #1d4ed8); }
+.stat-card-glass.purple::before { background: linear-gradient(90deg, #5038a0, #8075e5); }
+.stat-card-glass.green::before { background: linear-gradient(90deg, #1DB954, #1ed760); }
+
+/* Interactive Row Click Hint Fade-in */
+.row-hint {
+  font-size: 9px;
+  color: transparent;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: color 0.2s ease;
+  white-space: nowrap;
+}
+
+tr:hover .row-hint {
+  color: #1DB954 !important;
+}
+
+/* Scrollbar Styling */
 ::-webkit-scrollbar {
-  width: 12px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -114,28 +181,83 @@ h6 {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 0;
-  /* Spotify scrollbars are usually squareish or hidden */
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.25);
 }
 
-/* Custom fade animation */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ── WELCOME OVERLAY (Exact ui_demo/index.html) ── */
+.welcome-overlay-container {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(8, 11, 18, 0.92);
+  backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.5s ease;
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
+.welcome-card-box {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(29, 185, 84, 0.3);
+  border-radius: 24px;
+  padding: 44px 52px;
+  max-width: 520px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(29, 185, 84, 0.1), 0 40px 80px rgba(0, 0, 0, 0.8);
+  animation: cardPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes cardPop {
+  from { opacity: 0; transform: scale(0.88) translateY(20px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.welcome-logo-icon {
+  width: 72px;
+  height: 72px;
+  background: linear-gradient(135deg, #1DB954, #1ed760);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  margin: 0 auto 20px;
+  box-shadow: 0 0 30px rgba(29, 185, 84, 0.4);
+  animation: logoPulse 3s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(29, 185, 84, 0.3); }
+  50%      { box-shadow: 0 0 40px rgba(29, 185, 84, 0.6); }
+}
+
+/* ── MARKET CLOSED TOAST (Exact ui_demo/index.html) ── */
+.mkt-closed-toast-container {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(13, 17, 23, 0.97);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 16px;
+  padding: 20px 28px;
+  z-index: 8000;
+  text-align: center;
+  backdrop-filter: blur(20px);
+  min-width: 340px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+  animation: toastPop 0.35s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+}
+
+@keyframes toastPop {
+  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }

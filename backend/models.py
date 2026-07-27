@@ -44,11 +44,14 @@ class PortfolioPosition(BaseModel):
     pnl: float
     stop_loss_price: Optional[float] = None
     atr: Optional[float] = None
+    peak_price: Optional[float] = None           # Highest price reached while holding
+    trailing_stop_price: Optional[float] = None  # Computed: peak - (2 × ATR14)
 
 class PortfolioSummary(BaseModel):
     cash: float
     equity: float
     total_value: float
+    todays_pnl: float = 0.0
     positions: List[PortfolioPosition]
 
 class TradeRequest(BaseModel):

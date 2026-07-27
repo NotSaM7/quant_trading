@@ -1,22 +1,64 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Table, TableBody, TableCell, TableHead, TableRow, CircularProgress, Snackbar, Alert } from '@mui/material';
-import TradeForm from './TradeForm';
-import { getPortfolio, type PortfolioSummary } from '../api';
-
-import Analysis from './Analysis';
-import { startAutoTrading, stopAutoTrading, getAutoStatus, triggerAutoScan } from '../api';
-import { useAuth } from '../context/AuthContext';
-import { Button, Chip, Tabs, Tab } from '@mui/material';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { Box, Typography, Table, TableBody, TableCell, TableHead, TableRow, CircularProgress, Snackbar, Alert, Button, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import StopIcon from '@mui/icons-material/Stop';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import TradeForm from './TradeForm';
+import Analysis from './Analysis';
+import { getPortfolio, startAutoTrading, stopAutoTrading, getAutoStatus, triggerAutoScan, bookProfit, type PortfolioSummary } from '../api';
+import { useAuth } from '../context/AuthContext';
+import { WelcomeOverlay } from './WelcomeOverlay';
+import { checkMarketGuard, MarketGuardToast, type MarketGuardStatus } from './MarketGuardToast';
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+    tabIndex?: number;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
     const { isAuthenticated, openAuthModal } = useAuth();
     const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [autoRunning, setAutoRunning] = useState<boolean>(false);
-    const [tabIndex, setTabIndex] = useState<number>(0);
     const [authWarning, setAuthWarning] = useState<string | null>(null);
+    const [selectedTicker, setSelectedTicker] = useState<string>('');
+
+    const activeTabIndex = tabIndex;
+
+    // Market Guard Modal state
+    const [guardModalOpen, setGuardModalOpen] = useState(false);
+    const [guardStatus, setGuardStatus] = useState<MarketGuardStatus | null>(null);
+
+    // Book Profit Confirmation Modal state
+    const [confirmBookProfitOpen, setConfirmBookProfitOpen] = useState(false);
+    const [bookProfitLoading, setBookProfitLoading] = useState(false);
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+    const handleBookProfitClick = () => {
+        const guard = checkMarketGuard();
+        if (!guard.allowed) {
+            setGuardStatus(guard);
+            setGuardModalOpen(true);
+            return;
+        }
+        setConfirmBookProfitOpen(true);
+    };
+
+    const handleBookProfitConfirm = async () => {
+        setBookProfitLoading(true);
+        try {
+            const res = await bookProfit();
+            setToastMessage(res.message);
+            setConfirmBookProfitOpen(false);
+            await fetchPortfolio();
+            if (res.bot_scan_triggered) {
+                triggerAutoScan().catch(err => console.error("Auto scan error:", err));
+            }
+        } catch (e: any) {
+            console.error("Book profit error:", e);
+            setToastMessage(e.response?.data?.detail || e.message || "Failed to book profit");
+        } finally {
+            setBookProfitLoading(false);
+        }
+    };
 
     const fetchPortfolio = async () => {
         try {
@@ -45,6 +87,15 @@ const Dashboard: React.FC = () => {
             return;
         }
 
+        if (!autoRunning) {
+            const guard = checkMarketGuard();
+            if (!guard.allowed) {
+                setGuardStatus(guard);
+                setGuardModalOpen(true);
+                return;
+            }
+        }
+
         try {
             if (autoRunning) {
                 await stopAutoTrading();
@@ -52,7 +103,6 @@ const Dashboard: React.FC = () => {
             } else {
                 await startAutoTrading();
                 setAutoRunning(true);
-                // Trigger first 60-second scan immediately on start
                 try {
                     await triggerAutoScan();
                     fetchPortfolio();
@@ -70,7 +120,7 @@ const Dashboard: React.FC = () => {
         fetchPortfolio();
         checkAutoStatus();
 
-        // 60-Second Auto Trading Bot Ticker (Runs continuously ONLY when user is authenticated and bot is active)
+        // 60-Second Auto Trading Bot Ticker
         const autoInterval = setInterval(async () => {
             if (autoRunning && isAuthenticated) {
                 try {
@@ -104,14 +154,13 @@ const Dashboard: React.FC = () => {
     };
 
     if (loading) {
-        return <Box display="flex" justifyContent="center" mt={4}><CircularProgress color="success" /></Box>;
+        return <Box display="flex" justifyContent="center" mt={8}><CircularProgress sx={{ color: '#00d4aa' }} /></Box>;
     }
 
     if (!portfolio) {
         return <Typography color="error" align="center" mt={4}>Failed to load portfolio data</Typography>;
     }
 
-    // Greeting based on time
     const getGreeting = () => {
         const hour = new Date().getHours();
         if (hour < 12) return 'Good Morning';
@@ -119,131 +168,359 @@ const Dashboard: React.FC = () => {
         return 'Good Evening';
     };
 
+    const handleRowClick = (ticker: string) => {
+        setSelectedTicker(ticker);
+    };
+
     return (
         <Box sx={{ pb: 6 }}>
-            {/* Header / Top Bar */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            {/* Welcome Daily Banner */}
+            <WelcomeOverlay />            {/* Sub-Header Tabs & Page Title (Matching UI Demo) */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3.5, flexWrap: 'wrap', gap: 2, animation: 'slideDown 0.5s ease both' }}>
                 <Box>
-                    <Typography variant="h4" fontWeight="bold">{getGreeting()}</Typography>
-                    <Box sx={{ mt: 1, display: 'flex', gap: 2, alignItems: 'center' }}>
-                        <Chip
-                            label={autoRunning ? "Auto-Trading ACTIVE (60s Cycle)" : "Auto-Trading PAUSED"}
-                            color={autoRunning ? "success" : "default"}
-                            variant="outlined"
-                            size="small"
-                        />
-                        <Button
-                            variant="contained"
-                            color={autoRunning ? "error" : "success"}
-                            startIcon={autoRunning ? <StopIcon /> : <PlayArrowIcon />}
-                            onClick={toggleAutoTrade}
-                            size="small"
-                            sx={{ borderRadius: 20 }}
-                        >
-                            {autoRunning ? "Stop Bot" : "Start Bot"}
-                        </Button>
-                    </Box>
+                    <Typography
+                        variant="h1"
+                        fontWeight="800"
+                        sx={{
+                            fontFamily: '"Outfit", sans-serif',
+                            fontSize: '36px',
+                            letterSpacing: '-1px',
+                            background: 'linear-gradient(135deg, #fff 0%, #94a3b8 100%)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            lineHeight: 1.1
+                        }}
+                    >
+                        {getGreeting()}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#B3B3B3', mt: 0.5, fontFamily: '"Outfit", sans-serif', fontSize: '13px' }}>
+                        {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · NSE / BSE
+                    </Typography>
                 </Box>
 
-                <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} textColor="inherit" indicatorColor="primary">
-                    <Tab label="Portfolio" />
-                    <Tab label="Analysis" />
-                </Tabs>
+                {/* Right Top Controls: Bot Status Pill + Stop Bot Button (Exact Demo UI) */}
+                <Box display="flex" alignItems="center" gap={1.5}>
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            px: 2,
+                            py: 0.8,
+                            borderRadius: '50px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                            border: '1px solid',
+                            bgcolor: autoRunning ? 'rgba(29, 185, 84, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                            borderColor: autoRunning ? 'rgba(29, 185, 84, 0.35)' : 'rgba(255, 255, 255, 0.1)',
+                            color: autoRunning ? '#1DB954' : '#B3B3B3',
+                            animation: autoRunning ? 'glow-pulse 3s ease-in-out infinite' : 'none'
+                        }}
+                    >
+                        <Box
+                            sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                bgcolor: autoRunning ? '#1DB954' : '#7C7C8A',
+                                animation: autoRunning ? 'pulse-dot 2s infinite' : 'none'
+                            }}
+                        />
+                        {autoRunning ? 'AUTO-TRADING ACTIVE · 60s' : 'AUTO-TRADING PAUSED'}
+                    </Box>
+                    <Button
+                        variant="contained"
+                        onClick={toggleAutoTrade}
+                        startIcon={autoRunning ? <StopIcon /> : <PlayArrowIcon />}
+                        sx={{
+                            px: 3,
+                            py: 1,
+                            borderRadius: '50px',
+                            fontWeight: 800,
+                            fontSize: '13px',
+                            textTransform: 'none',
+                            fontFamily: '"Outfit", sans-serif',
+                            bgcolor: autoRunning ? 'rgba(239, 68, 68, 0.15)' : '#1DB954',
+                            background: autoRunning ? 'rgba(239, 68, 68, 0.15)' : '#1DB954',
+                            color: autoRunning ? '#ef4444' : '#000',
+                            border: autoRunning ? '1px solid rgba(239,68,68,0.4)' : 'none',
+                            boxShadow: autoRunning ? 'none' : '0 0 20px rgba(29,185,84,0.3)',
+                            transition: 'all 0.25s ease',
+                            '&:hover': {
+                                bgcolor: autoRunning ? 'rgba(239, 68, 68, 0.25)' : '#1ed760',
+                                background: autoRunning ? 'rgba(239, 68, 68, 0.25)' : '#1ed760',
+                                transform: 'translateY(-1px)'
+                            }
+                        }}
+                    >
+                        {autoRunning ? 'Stop Bot' : 'Start Bot'}
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleBookProfitClick}
+                        sx={{
+                            px: 3,
+                            py: 1,
+                            borderRadius: '50px',
+                            fontWeight: 800,
+                            fontSize: '13px',
+                            textTransform: 'none',
+                            fontFamily: '"Outfit", sans-serif',
+                            background: 'linear-gradient(135deg, #1DB954, #1ed760)',
+                            color: '#000000',
+                            border: 'none',
+                            boxShadow: '0 4px 20px rgba(29, 185, 84, 0.4), 0 0 15px rgba(30, 215, 96, 0.25)',
+                            transition: 'all 0.25s ease',
+                            '&:hover': {
+                                background: '#1ed760',
+                                transform: 'translateY(-2px)',
+                                boxShadow: '0 8px 25px rgba(29, 185, 84, 0.5)'
+                            }
+                        }}
+                    >
+                        💰 Book Profit
+                    </Button>
+                </Box>
             </Box>
 
-            {tabIndex === 0 ? (
+            {activeTabIndex === 0 ? (
                 // PORTFOLIO VIEW
-                <Box sx={{ display: 'flex', gap: 3, flexDirection: { xs: 'column', lg: 'row' }, width: '100%' }}>
-                    {/* Left Side: Trade Form */}
-                    <Box sx={{ flex: { xs: '1 1 100%', lg: '1 1 350px' }, width: '100%' }}>
-                        <TradeForm onTradeSuccess={fetchPortfolio} />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5, width: '100%' }}>
+
+                    {/* Stat Cards with Top Gradient Border Accent */}
+                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2 }}>
+                        {/* Total Value */}
+                        <Box className="stat-card-glass blue" sx={{ display: 'flex', alignItems: 'center', gap: 2, animation: 'fadeInUp 0.5s ease both', animationDelay: '0.1s' }}>
+                            <Box sx={{ width: 52, height: 52, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, background: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(29,78,216,0.1))' }}>
+                                💰
+                            </Box>
+                            <Box>
+                                <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+                                    TOTAL VALUE
+                                </Typography>
+                                <Typography variant="h5" fontWeight="800" sx={{ color: 'white', fontFamily: '"JetBrains Mono", monospace', fontSize: '26px', letterSpacing: '-0.5px' }}>
+                                    {formatCurrency(portfolio.total_value)}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#1DB954', fontWeight: 600, fontSize: '11px' }}>
+                                    ▲ Live position value
+                                </Typography>
+                            </Box>
+                        </Box>
+
+                        {/* Equity */}
+                        <Box className="stat-card-glass purple" sx={{ display: 'flex', alignItems: 'center', gap: 2, animation: 'fadeInUp 0.5s ease both', animationDelay: '0.2s' }}>
+                            <Box sx={{ width: 52, height: 52, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, background: 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(124,58,237,0.1))' }}>
+                                📈
+                            </Box>
+                            <Box>
+                                <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+                                    EQUITY
+                                </Typography>
+                                <Typography variant="h5" fontWeight="800" sx={{ color: 'white', fontFamily: '"JetBrains Mono", monospace', fontSize: '26px', letterSpacing: '-0.5px' }}>
+                                    {formatCurrency(portfolio.equity)}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#1DB954', fontWeight: 600, fontSize: '11px' }}>
+                                    ▲ {portfolio.positions.length} active position(s)
+                                </Typography>
+                            </Box>
+                        </Box>
+
+                        {/* Cash Balance */}
+                        <Box className="stat-card-glass green" sx={{ display: 'flex', alignItems: 'center', gap: 2, animation: 'fadeInUp 0.5s ease both', animationDelay: '0.3s' }}>
+                            <Box sx={{ width: 52, height: 52, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, background: 'linear-gradient(135deg, rgba(29,185,84,0.2), rgba(30,215,96,0.1))' }}>
+                                💵
+                            </Box>
+                            <Box>
+                                <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+                                    CASH BALANCE
+                                </Typography>
+                                <Typography variant="h5" fontWeight="800" sx={{ color: 'white', fontFamily: '"JetBrains Mono", monospace', fontSize: '26px', letterSpacing: '-0.5px' }}>
+                                    {formatCurrency(portfolio.cash)}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#B3B3B3', fontWeight: 600, fontSize: '11px' }}>
+                                    Fully deployed
+                                </Typography>
+                            </Box>
+                        </Box>
+
+                        {/* Today's P/L Card */}
+                        <Box className={`stat-card-glass ${(portfolio.todays_pnl || 0) >= 0 ? 'green' : 'red'}`} sx={{ display: 'flex', alignItems: 'center', gap: 2, animation: 'fadeInUp 0.5s ease both', animationDelay: '0.4s' }}>
+                            <Box sx={{ width: 52, height: 52, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, background: (portfolio.todays_pnl || 0) >= 0 ? 'linear-gradient(135deg, rgba(29,185,84,0.2), rgba(30,215,96,0.1))' : 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.1))' }}>
+                                📊
+                            </Box>
+                            <Box>
+                                <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+                                    TODAY'S P/L
+                                </Typography>
+                                <Typography variant="h5" fontWeight="800" sx={{ color: (portfolio.todays_pnl || 0) > 0 ? '#1DB954' : (portfolio.todays_pnl || 0) < 0 ? '#E91429' : 'white', fontFamily: '"JetBrains Mono", monospace', fontSize: '26px', letterSpacing: '-0.5px' }}>
+                                    {(portfolio.todays_pnl || 0) > 0 ? `+${formatCurrency(portfolio.todays_pnl || 0)}` : formatCurrency(portfolio.todays_pnl || 0)}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: (portfolio.todays_pnl || 0) >= 0 ? '#1DB954' : '#E91429', fontWeight: 600, fontSize: '11px' }}>
+                                    {(portfolio.todays_pnl || 0) >= 0 ? '▲ Today\'s session gains' : '▼ Today\'s session loss'}
+                                </Typography>
+                            </Box>
+                        </Box>
                     </Box>
 
-                    {/* Right Side: content */}
-                    <Box sx={{ flex: { xs: '1 1 100%', lg: '2 1 500px' }, display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
+                    {/* Main Content Grid: Portfolio Table (Left) + Trade Form (Right) */}
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 370px' }, gap: 2.5, width: '100%' }}>
 
-                        {/* Summary Cards */}
-                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2 }}>
-                            {/* Total Value */}
-                            <Box className="spotify-card" sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <Box sx={{ width: 64, height: 64, bgcolor: 'linear-gradient(135deg, #450af5, #c4efd9)', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                                    <span style={{ fontSize: '24px' }}>💰</span>
-                                </Box>
-                                <Box>
-                                    <Typography variant="caption" color="text.secondary" fontWeight="bold">TOTAL VALUE</Typography>
-                                    <Typography variant="h6" fontWeight="bold">{formatCurrency(portfolio.total_value)}</Typography>
-                                </Box>
+                        {/* Left: Your Portfolio Panel (Matching ui_demo/index.html 12px radius) */}
+                        <Box
+                            sx={{
+                                background: '#121212',
+                                border: '1px solid rgba(255, 255, 255, 0.06)',
+                                borderRadius: '12px',
+                                overflow: 'hidden'
+                            }}
+                        >
+                            <Box
+                                sx={{
+                                    padding: '20px 24px 16px',
+                                    borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}
+                            >
+                                <Typography variant="h6" fontWeight="700" sx={{ color: 'white', fontSize: '16px', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <span>🗂</span> Your Portfolio
+                                </Typography>
+                                <Typography variant="caption" sx={{ fontSize: '11px', color: '#B3B3B3', fontWeight: 600 }}>
+                                    Live · auto-refreshing
+                                </Typography>
                             </Box>
-                            {/* Equity */}
-                            <Box className="spotify-card" sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <Box sx={{ width: 64, height: 64, borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #7e22ce, #a855f7)' }}>
-                                    <span style={{ fontSize: '24px' }}>📈</span>
-                                </Box>
-                                <Box>
-                                    <Typography variant="caption" color="text.secondary" fontWeight="bold">EQUITY</Typography>
-                                    <Typography variant="h6" fontWeight="bold">{formatCurrency(portfolio.equity)}</Typography>
-                                </Box>
-                            </Box>
-                            {/* Cash */}
-                            <Box className="spotify-card" sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <Box sx={{ width: 64, height: 64, borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #047857, #10b981)' }}>
-                                    <span style={{ fontSize: '24px' }}>💵</span>
-                                </Box>
-                                <Box>
-                                    <Typography variant="caption" color="text.secondary" fontWeight="bold">CASH BALANCE</Typography>
-                                    <Typography variant="h6" fontWeight="bold">{formatCurrency(portfolio.cash)}</Typography>
-                                </Box>
-                            </Box>
-                        </Box>
 
-                        {/* Positions Table */}
-                        <Box className="spotify-card" sx={{ flexGrow: 1, width: '100%', overflow: 'hidden' }}>
-                            <Typography variant="h5" fontWeight="bold" sx={{ mb: 2 }}>Your Portfolio</Typography>
                             <Box sx={{ overflowX: 'auto', width: '100%' }}>
-                                <Table size="medium" sx={{ minWidth: 500 }}>
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell sx={{ borderBottom: '1px solid #333', color: '#b3b3b3', fontSize: '0.875rem' }}>#</TableCell>
-                                        <TableCell sx={{ borderBottom: '1px solid #333', color: '#b3b3b3', fontSize: '0.875rem' }}>TITLE (TICKER)</TableCell>
-                                        <TableCell align="right" sx={{ borderBottom: '1px solid #333', color: '#b3b3b3', fontSize: '0.875rem' }}>QUANTITY</TableCell>
-                                        <TableCell align="right" sx={{ borderBottom: '1px solid #333', color: '#b3b3b3', fontSize: '0.875rem' }}>PRICE</TableCell>
-                                        <TableCell align="right" sx={{ borderBottom: '1px solid #333', color: '#b3b3b3', fontSize: '0.875rem' }}>P&L</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {portfolio.positions.map((row, index) => (
-                                        <TableRow key={row.ticker} hover sx={{ '& td': { borderBottom: 'none' }, '&:hover': { bgcolor: 'rgba(255,255,255,0.1) !important' } }}>
-                                            <TableCell sx={{ color: 'text.secondary' }}>{index + 1}</TableCell>
-                                            <TableCell component="th" scope="row" sx={{ fontWeight: 600, color: 'white' }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                    <Box sx={{ width: 40, height: 40, bgcolor: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b3b3b3', fontSize: '10px' }}>stock</Box>
-                                                    <Box display="flex" flexDirection="column">
-                                                        <span>{row.ticker}</span>
-                                                        <span style={{ fontSize: '12px', color: '#b3b3b3', fontWeight: 400 }}>Stock</span>
-                                                    </Box>
-                                                </Box>
-                                            </TableCell>
-                                            <TableCell align="right" sx={{ color: 'text.secondary' }}>{row.quantity}</TableCell>
-                                            <TableCell align="right" sx={{ color: 'text.secondary' }}>{formatCurrency(row.current_price)}</TableCell>
-                                            <TableCell align="right" sx={{
-                                                color: row.pnl >= 0 ? 'success.main' : 'error.main',
-                                                fontWeight: 600
-                                            }}>
-                                                {row.pnl >= 0 ? '+' : ''}{formatCurrency(row.pnl)}
-                                            </TableCell>
+                                <Table size="medium">
+                                    <TableHead>
+                                        <TableRow sx={{ background: 'rgba(0, 0, 0, 0.4)' }}>
+                                            <TableCell sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>#</TableCell>
+                                            <TableCell sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>TICKER</TableCell>
+                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>QTY</TableCell>
+                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>AVG BUY PRICE</TableCell>
+                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>LIVE PRICE</TableCell>
+                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>P&L</TableCell>
                                         </TableRow>
-                                    ))}
-                                    {portfolio.positions.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary', borderBottom: 'none' }}>
-                                                No holdings yet. Start trading!
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </TableBody>
-                            </Table>
+                                    </TableHead>
+                                    <TableBody>
+                                        {portfolio.positions.map((row, index) => {
+                                            const cleanSymbol = row.ticker.replace('.NS', '');
+                                            const isProfit = row.current_price >= row.average_price;
+                                            
+                                            // Brand color palette per stock matching ui_demo/index.html
+                                            const brandColors: Record<string, string> = {
+                                                'TCS.NS': '#3b82f6',
+                                                'TITAN.NS': '#a855f7',
+                                                'SUNPHARMA.NS': '#06b6d4',
+                                                'WIPRO.NS': '#f59e0b',
+                                                'HCLTECH.NS': '#10b981'
+                                            };
+                                            const badgeColor = brandColors[row.ticker] || '#1DB954';
+
+                                            return (
+                                                <TableRow
+                                                    key={row.ticker}
+                                                    onClick={() => handleRowClick(row.ticker)}
+                                                    sx={{
+                                                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s',
+                                                        animation: 'rowFadeIn 0.4s ease both',
+                                                        animationDelay: `${0.1 * (index + 1)}s`,
+                                                    }}
+                                                >
+                                                    <TableCell sx={{ color: '#7C7C8A', fontSize: '12px' }}>{index + 1}</TableCell>
+                                                    <TableCell>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                                            <Box
+                                                                sx={{
+                                                                    width: 36,
+                                                                    height: 36,
+                                                                    borderRadius: '10px',
+                                                                    bgcolor: `${badgeColor}22`,
+                                                                    color: badgeColor,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    fontSize: '10px',
+                                                                    fontWeight: 800
+                                                                }}
+                                                            >
+                                                                {cleanSymbol.slice(0, 3)}
+                                                            </Box>
+                                                            <Box>
+                                                                <Box display="flex" alignItems="center" gap={1}>
+                                                                    <Typography variant="body2" fontWeight="700" sx={{ color: 'white', fontSize: '13px', fontFamily: '"Outfit", sans-serif' }}>
+                                                                        {cleanSymbol}
+                                                                    </Typography>
+                                                                    <span className="row-hint">
+                                                                        ⚡ CLICK TO TRADE
+                                                                    </span>
+                                                                </Box>
+                                                                <Typography variant="caption" sx={{ color: '#B3B3B3', fontSize: '10px', fontFamily: '"Outfit", sans-serif' }}>
+                                                                    NSE Stock
+                                                                </Typography>
+                                                            </Box>
+                                                        </Box>
+                                                    </TableCell>
+                                                    <TableCell align="right" sx={{ color: '#7C7C8A', fontFamily: '"JetBrains Mono", monospace', fontSize: '12.5px' }}>
+                                                        {row.quantity}
+                                                    </TableCell>
+                                                    <TableCell align="right" sx={{ color: '#7C7C8A', fontFamily: '"JetBrains Mono", monospace', fontSize: '12.5px' }}>
+                                                        {formatCurrency(row.average_price)}
+                                                    </TableCell>
+                                                    <TableCell
+                                                        align="right"
+                                                        sx={{
+                                                            color: isProfit ? '#1DB954' : '#E91429',
+                                                            fontFamily: '"JetBrains Mono", monospace',
+                                                            fontWeight: 600,
+                                                            fontSize: '12.5px'
+                                                        }}
+                                                    >
+                                                        {formatCurrency(row.current_price)}
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                        <Box
+                                                            sx={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                px: 1,
+                                                                py: 0.4,
+                                                                borderRadius: '6px',
+                                                                fontSize: '11.5px',
+                                                                fontWeight: 700,
+                                                                fontFamily: '"JetBrains Mono", monospace',
+                                                                bgcolor: isProfit ? 'rgba(29, 185, 84, 0.15)' : 'rgba(233, 20, 41, 0.15)',
+                                                                color: isProfit ? '#1DB954' : '#E91429'
+                                                            }}
+                                                        >
+                                                            {isProfit ? '+' : ''}{formatCurrency(row.pnl)}
+                                                        </Box>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                        {portfolio.positions.length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={6} align="center" sx={{ py: 6, color: '#64748b', borderBottom: 'none' }}>
+                                                    No holdings yet. Execute a trade or start the bot!
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
                             </Box>
                         </Box>
+
+                        {/* Right: Execute Trade Panel */}
+                        <Box>
+                            <TradeForm onTradeSuccess={fetchPortfolio} selectedTicker={selectedTicker} />
+                        </Box>
+
                     </Box>
                 </Box>
             ) : (
@@ -257,10 +534,93 @@ const Dashboard: React.FC = () => {
                 onClose={() => setAuthWarning(null)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
-                <Alert severity="warning" onClose={() => setAuthWarning(null)} sx={{ width: '100%', minWidth: '320px', bgcolor: '#282828', color: 'white' }}>
+                <Alert severity="warning" onClose={() => setAuthWarning(null)} sx={{ width: '100%', minWidth: '320px', bgcolor: '#0d1117', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}>
                     {authWarning}
                 </Alert>
             </Snackbar>
+
+            <Snackbar
+                open={!!toastMessage}
+                autoHideDuration={5000}
+                onClose={() => setToastMessage(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert severity="success" onClose={() => setToastMessage(null)} sx={{ width: '100%', minWidth: '320px', bgcolor: '#121212', color: '#1ed760', border: '1px solid rgba(29, 185, 84, 0.4)', fontFamily: '"Outfit", sans-serif', fontWeight: 600 }}>
+                    {toastMessage}
+                </Alert>
+            </Snackbar>
+
+            {/* Book Profit Confirmation Dialog */}
+            <Dialog
+                open={confirmBookProfitOpen}
+                onClose={() => setConfirmBookProfitOpen(false)}
+                PaperProps={{
+                    style: {
+                        background: '#121212',
+                        border: '1px solid rgba(29, 185, 84, 0.4)',
+                        borderRadius: '20px',
+                        color: 'white',
+                        padding: '16px',
+                        maxWidth: '460px',
+                        width: '90%',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.9), 0 0 40px rgba(29, 185, 84, 0.2)'
+                    }
+                }}
+            >
+                <DialogTitle sx={{ fontWeight: 800, fontSize: '20px', display: 'flex', alignItems: 'center', gap: 1.5, fontFamily: '"Outfit", sans-serif', pb: 1 }}>
+                    <span style={{ fontSize: '26px' }}>💰</span> Book Profit & Cash Out?
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" sx={{ color: '#B3B3B3', mb: 2, fontSize: '13.5px', lineHeight: 1.6, fontFamily: '"Outfit", sans-serif' }}>
+                        This action will sell <strong>100% of all stock positions currently in profit</strong> at live market prices to lock in your capital gains.
+                    </Typography>
+                    <Box sx={{ background: 'rgba(29, 185, 84, 0.08)', border: '1px solid rgba(29, 185, 84, 0.3)', borderRadius: '12px', p: 2, mb: 1 }}>
+                        <Typography variant="caption" sx={{ color: '#1ed760', fontWeight: 800, letterSpacing: '1px', display: 'block', mb: 1, fontFamily: '"Outfit", sans-serif' }}>
+                            ✨ AUTOMATED PROCESS:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontSize: '12.5px', color: '#FFFFFF', lineHeight: 1.6, fontFamily: '"Outfit", sans-serif' }}>
+                            1. 📈 Liquidates only profitable positions.<br/>
+                            2. 💵 Credits principal + profit into cash balance.<br/>
+                            3. 🤖 Re-initiates automated bot strategy scan to detect new market entry signals.
+                        </Typography>
+                    </Box>
+                </DialogContent>
+                <DialogActions sx={{ px: 3, pb: 2, gap: 1.5 }}>
+                    <Button
+                        onClick={() => setConfirmBookProfitOpen(false)}
+                        sx={{ color: '#B3B3B3', fontWeight: 700, borderRadius: '10px', textTransform: 'none', fontFamily: '"Outfit", sans-serif', px: 2 }}
+                    >
+                        No, Cancel
+                    </Button>
+                    <Button
+                        onClick={handleBookProfitConfirm}
+                        disabled={bookProfitLoading}
+                        variant="contained"
+                        sx={{
+                            background: 'linear-gradient(135deg, #1DB954, #1ed760)',
+                            color: '#000000',
+                            fontWeight: 800,
+                            borderRadius: '10px',
+                            px: 3,
+                            py: 1,
+                            fontSize: '13px',
+                            fontFamily: '"Outfit", sans-serif',
+                            textTransform: 'none',
+                            boxShadow: '0 4px 20px rgba(29, 185, 84, 0.4)',
+                            '&:hover': { background: '#1ed760' }
+                        }}
+                    >
+                        {bookProfitLoading ? 'Processing...' : 'Yes, Book Profit'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Market Guard Toast Modal */}
+            <MarketGuardToast
+                open={guardModalOpen}
+                status={guardStatus}
+                onClose={() => setGuardModalOpen(false)}
+            />
         </Box>
     );
 };

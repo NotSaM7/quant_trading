@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from sqlalchemy.orm import Session
 import json
 import asyncio
@@ -94,7 +94,9 @@ class TradingEngine:
         self.positions: Dict[str, PortfolioPosition] = {}
         self.history: List[TradeHistoryItem] = []
         self.is_running = False
-        self.stop_loss_pct = 0.03  # 3.0% stop loss
+        self.auto_user_id: Optional[str] = None       # Stored when Start Bot is clicked
+        self.stop_loss_pct = 0.03                      # Used for position sizing only (not for stop-loss trigger)
+        self.trailing_multiplier = 2.0                 # Trailing stop = 2 × ATR14 below peak price
         self.risk_per_trade_pct = 0.02  # 2.0% equity risk per trade
         self.load_history()
 
@@ -179,11 +181,25 @@ class TradingEngine:
     def get_stock_price(self, ticker: str) -> float:
         try:
             ticker_data = yf.Ticker(ticker)
-            history = ticker_data.history(period="1d")
-            if not history.empty:
-                return float(history['Close'].iloc[-1])
-        except Exception as e:
-            print(f"Error fetching price for {ticker}: {e}")
+            history = ticker_data.history(period="1d", raise_errors=False)
+            if history is not None and not history.empty and 'Close' in history:
+                val = float(history['Close'].iloc[-1])
+                return val if not pd.isna(val) and val > 0 else 0.0
+        except Exception:
+            pass
+        return 0.0
+
+    def get_atr14(self, ticker: str) -> float:
+        """Fetches the 14-day Average True Range for a ticker. Used for 2×ATR14 trailing stop."""
+        try:
+            ticker_data = yf.Ticker(ticker)
+            history = ticker_data.history(period="3mo", interval="1d", raise_errors=False)
+            if history is not None and len(history) >= 15:
+                atr = calculate_atr(history, period=14)
+                val = float(atr.iloc[-1])
+                return val if not pd.isna(val) else 0.0
+        except Exception:
+            pass
         return 0.0
 
     def check_stop_losses(self):
@@ -215,16 +231,30 @@ class TradingEngine:
         position_list = []
         
         for ticker, pos in self.positions.items():
-            current_price = self.get_stock_price(ticker)
-            pos.current_price = current_price
+            fetched_price = self.get_stock_price(ticker)
+            if fetched_price > 0:
+                pos.current_price = fetched_price
+            elif not pos.current_price or pos.current_price <= 0:
+                pos.current_price = pos.average_price
+
+            current_price = pos.current_price
             pos.pnl = (current_price - pos.average_price) * pos.quantity
             total_value += current_price * pos.quantity
             position_list.append(pos)
+
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_realized_pnl = sum(
+            item.pnl for item in self.history 
+            if item.pnl is not None and item.timestamp >= today_start
+        )
+        unrealized_pnl = sum(pos.pnl for pos in position_list)
+        todays_pnl = round(today_realized_pnl + unrealized_pnl, 2)
 
         return PortfolioSummary(
             cash=self.cash,
             equity=total_value - self.cash,
             total_value=total_value,
+            todays_pnl=todays_pnl,
             positions=position_list
         )
 
@@ -316,10 +346,10 @@ class TradingEngine:
         """Runs SMA5 / SMA20 + RSI(14) Confirmation Filter + ATR Volatility Sizing"""
         try:
             ticker_data = yf.Ticker(ticker)
-            history = ticker_data.history(period="3mo", interval="1d")
+            history = ticker_data.history(period="3mo", interval="1d", raise_errors=False)
             
-            if len(history) < 25:
-                return {"status": "error", "message": "Not enough historical data for indicators"}
+            if history is None or len(history) < 25:
+                return {"status": "error", "message": f"Not enough historical price data for {ticker}"}
             
             # Compute technical indicators
             history['SMA5'] = history['Close'].rolling(window=5).mean()
@@ -579,7 +609,8 @@ class TradingEngine:
                         ticker=ticker,
                         quantity=quantity,
                         average_price=current_price,
-                        current_price=current_price
+                        current_price=current_price,
+                        peak_price=current_price  # Trailing stop starts tracking from entry price
                     )
                     db.add(new_pos)
 
@@ -627,6 +658,84 @@ class TradingEngine:
 
         return {"status": "error", "message": "Invalid trade action"}
 
+    def book_profit_db(self, db: Session, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Evaluates Total Portfolio Value against baseline capital (100,000 INR).
+        Sells 100% of all stock positions currently in profit (current_price > average_price or pnl > 0),
+        credits cash balance, and logs profit booking rationale.
+        """
+        profit_positions_sold = []
+        total_profit_booked = 0.0
+
+        try:
+            # 1. Fetch live portfolio summary
+            if user_id:
+                summary = self.get_portfolio_summary_db(db, user_id=user_id)
+            else:
+                summary = self.get_portfolio_summary()
+
+            portfolio_total_val = summary.total_value
+            initial_capital = 100000.0
+            overall_pnl = portfolio_total_val - initial_capital
+
+            # 2. Identify all positions currently in profit
+            to_sell = []
+            for pos in summary.positions:
+                curr_p = pos.current_price if (pos.current_price and pos.current_price > 0) else pos.average_price
+                pnl = pos.pnl if pos.pnl != 0 else (curr_p - pos.average_price) * pos.quantity
+                if pnl > 0 or curr_p > pos.average_price:
+                    to_sell.append((pos.ticker, pos.quantity, pos.average_price, curr_p, pnl))
+
+            # 3. Execute SELL order for each profitable stock
+            for ticker, qty, avg_p, curr_p, pnl in to_sell:
+                try:
+                    trade_req = TradeRequest(ticker=ticker, action="SELL", quantity=qty)
+                    sell_reason = f"Profit Target Booked (+₹{pnl:.2f}). Total Portfolio Value: ₹{portfolio_total_val:,.2f}."
+                    
+                    if user_id:
+                        self.execute_trade_db(trade_req, db, user_id=user_id, strategy="PROFIT_BOOKING", reason=sell_reason)
+                    else:
+                        self.execute_trade(trade_req, strategy="PROFIT_BOOKING", reason=sell_reason)
+
+                    profit_positions_sold.append({
+                        "ticker": ticker,
+                        "quantity": qty,
+                        "buy_price": avg_p,
+                        "sell_price": curr_p,
+                        "profit": round(pnl, 2)
+                    })
+                    total_profit_booked += pnl
+                except Exception as err_sell:
+                    print(f"Error selling position {ticker}: {err_sell}")
+
+            count = len(profit_positions_sold)
+            if count == 0:
+                return {
+                    "status": "info",
+                    "message": f"Portfolio Total Value is ₹{portfolio_total_val:,.2f}. No individual positions are currently in profit to cash out.",
+                    "sold_positions": [],
+                    "total_profit_booked": 0.0,
+                    "bot_scan_triggered": False
+                }
+
+            return {
+                "status": "success",
+                "message": f"Successfully cashed out {count} profitable stock{'s' if count > 1 else ''} locking in +₹{total_profit_booked:.2f} profit! Total Portfolio Value: ₹{portfolio_total_val:,.2f}.",
+                "sold_positions": profit_positions_sold,
+                "total_profit_booked": round(total_profit_booked, 2),
+                "bot_scan_triggered": True
+            }
+
+        except Exception as e:
+            print(f"Error in book_profit_db: {e}")
+            return {
+                "status": "error",
+                "message": f"Profit booking failed: {str(e)}",
+                "sold_positions": [],
+                "total_profit_booked": 0.0,
+                "bot_scan_triggered": False
+            }
+
     def get_portfolio_summary_db(self, db: Session, user_id: Optional[str] = None) -> PortfolioSummary:
         portfolio = self._get_or_create_portfolio(db, user_id=user_id)
         if not portfolio:
@@ -646,20 +755,37 @@ class TradingEngine:
             pos_val = price * pos.quantity
             equity += pos_val
 
+            # Use stored trailing stop price; fall back to 7% below peak if not yet computed
+            peak = pos.peak_price if pos.peak_price else pos.average_price
+            trailing_stop = pos.trailing_stop_price if pos.trailing_stop_price else (peak * 0.93)
+
             position_list.append(PortfolioPosition(
                 ticker=pos.ticker,
                 quantity=pos.quantity,
                 average_price=pos.average_price,
                 current_price=price,
                 pnl=pnl,
-                stop_loss_price=pos.average_price * 0.97
+                stop_loss_price=trailing_stop,
+                peak_price=peak,
+                trailing_stop_price=trailing_stop
             ))
 
         total_val = cash + equity
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        db_trades_today = db.query(TradeDB).filter(
+            TradeDB.user_id == portfolio.user_id,
+            TradeDB.timestamp >= today_start,
+            TradeDB.pnl.isnot(None)
+        ).all()
+        today_realized_pnl = sum(t.pnl for t in db_trades_today if t.pnl)
+        unrealized_pnl = sum(p.pnl for p in position_list)
+        todays_pnl = round(today_realized_pnl + unrealized_pnl, 2)
+
         return PortfolioSummary(
             cash=cash,
             equity=equity,
             total_value=total_val,
+            todays_pnl=todays_pnl,
             positions=position_list
         )
 
@@ -678,11 +804,27 @@ class TradingEngine:
             price = self.get_stock_price(pos.ticker)
             if price <= 0: continue
 
-            pnl_pct = (price - pos.average_price) / pos.average_price
-            if pnl_pct <= -self.stop_loss_pct:
+            # --- Trailing Stop Logic (2 × ATR14) ---
+            # 1. Update peak price: only moves up, never down
+            current_peak = pos.peak_price if pos.peak_price else pos.average_price
+            if price > current_peak:
+                current_peak = price
+                pos.peak_price = price
+
+            # 2. Compute ATR14-based trailing stop distance
+            atr14 = self.get_atr14(pos.ticker)
+            if atr14 <= 0:
+                atr14 = current_peak * 0.035  # fallback: 3.5% of peak price
+            trailing_stop = current_peak - (self.trailing_multiplier * atr14)
+            pos.trailing_stop_price = trailing_stop
+            db.commit()  # persist updated peak and stop before checking trigger
+
+            # 3. Trigger sell if current price falls below trailing stop
+            if price < trailing_stop:
                 cost = price * pos.quantity
                 portfolio.cash += cost
                 pnl = (price - pos.average_price) * pos.quantity
+                peak_gain_pct = ((current_peak - pos.average_price) / pos.average_price * 100)
 
                 trade = TradeDB(
                     id=str(uuid.uuid4()),
@@ -692,13 +834,13 @@ class TradingEngine:
                     quantity=pos.quantity,
                     price=price,
                     pnl=pnl,
-                    strategy="STOP_LOSS",
-                    reason=f"🚨 Emergency 3.0% Stop-Loss Triggered for {pos.ticker} at ₹{price:.2f}"
+                    strategy="TRAILING_STOP",
+                    reason=f"🎯 2×ATR14 Trailing Stop for {pos.ticker} | Entry: ₹{pos.average_price:.2f} | Peak: ₹{current_peak:.2f} (+{peak_gain_pct:.1f}%) | Stop: ₹{trailing_stop:.2f} | Exit: ₹{price:.2f}"
                 )
                 db.add(trade)
                 db.delete(pos)
                 db.commit()
-                executed_trades.append({"ticker": pos.ticker, "action": "SELL", "quantity": pos.quantity, "reason": "STOP_LOSS"})
+                executed_trades.append({"ticker": pos.ticker, "action": "SELL", "quantity": pos.quantity, "reason": "TRAILING_STOP", "pnl": pnl})
 
         # 3. Parallel Scan ALL 40 Companies in INDIAN_STOCKS
         def scan_stock(stock_item):
@@ -755,10 +897,15 @@ class TradingEngine:
                 sma20 = res.get("sma20", 1)
                 rsi = res.get("rsi14", 50)
 
-                # Skip if already holding a large allocation in this stock
+                # Skip if already at max concentration (25% of portfolio value)
                 existing_holding = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
-                if existing_holding and existing_holding.quantity >= 100:
-                    continue
+                total_value_est = portfolio.cash + sum(
+                    (p.current_price or p.average_price) * p.quantity
+                    for p in db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+                )
+                existing_val = (existing_holding.quantity * price) if existing_holding else 0
+                if existing_val >= total_value_est * 0.25:
+                    continue  # Already at max 25% concentration for this stock
 
                 # Calculate quantitative momentum score across all 40 stocks
                 sma20_safe = sma20 if sma20 > 0 else 1.0
@@ -771,73 +918,207 @@ class TradingEngine:
                     "score": score
                 })
 
-        # Sort candidate companies by highest quantitative score (top opportunities across all 40 companies)
+        # Sort ALL BUY candidates by quantitative score (best first)
         buy_candidates.sort(key=lambda x: x["score"], reverse=True)
-        top_candidates = buy_candidates[:4] # Select top performing candidates for portfolio diversification
 
-        # 6. Allocate cash & execute BUY orders with healthy share quantities
-        if top_candidates and portfolio.cash > 0:
-            cash_per_stock = portfolio.cash / len(top_candidates)
-            for cand in top_candidates:
-                ticker = cand["ticker"]
-                price = cand.get("price")
-                if not price or price <= 0:
-                    continue
-                atr_qty = cand.get("atr_qty", 5)
-                reason = cand.get("reason", "")
+        # Compute current total portfolio value for concentration limits
+        all_held = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+        total_portfolio_value = portfolio.cash + sum(
+            (p.current_price or p.average_price) * p.quantity for p in all_held
+        )
+        MAX_CONCENTRATION = 0.25   # Max 25% of portfolio in any single stock
+        MIN_POSITION_CASH = 2000   # Minimum ₹2,000 to open/add to a position
 
-                qty_by_cash = int(cash_per_stock // price)
-                final_qty = max(1, min(max(atr_qty, 5), qty_by_cash)) if qty_by_cash > 0 else 0
-                cost = price * final_qty
+        # 6. Deploy ALL available cash into BUY candidates (no hard stock cap)
+        # Buys in score order until cash runs out or no more BUY signals remain
+        for cand in buy_candidates:
+            if portfolio.cash < MIN_POSITION_CASH:
+                break  # Not enough cash for a meaningful position
 
-                if final_qty > 0 and portfolio.cash >= cost:
-                    portfolio.cash -= cost
-                    existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
-                    if existing_pos:
-                        tot_cost = (existing_pos.quantity * existing_pos.average_price) + cost
-                        existing_pos.quantity += final_qty
-                        existing_pos.average_price = tot_cost / existing_pos.quantity
-                        existing_pos.current_price = price
-                    else:
-                        new_pos = PositionDB(
-                            id=str(uuid.uuid4()),
-                            user_id=portfolio.user_id,
-                            ticker=ticker,
-                            quantity=final_qty,
-                            average_price=price,
-                            current_price=price
-                        )
-                        db.add(new_pos)
+            ticker = cand["ticker"]
+            price = cand.get("price")
+            if not price or price <= 0:
+                continue
+            atr_qty = cand.get("atr_qty", 5)
+            reason = cand.get("reason", "")
 
-                    trade = TradeDB(
+            # Enforce 25% max concentration per stock
+            existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+            existing_value = (existing_pos.quantity * price) if existing_pos else 0
+            max_invest = (total_portfolio_value * MAX_CONCENTRATION) - existing_value
+            if max_invest <= MIN_POSITION_CASH:
+                continue  # Already near max allocation for this stock
+
+            investable = min(portfolio.cash, max_invest)
+            qty_by_cash = int(investable // price)
+            final_qty = max(1, min(max(atr_qty, 5), qty_by_cash)) if qty_by_cash > 0 else 0
+            cost = price * final_qty
+
+            if final_qty > 0 and portfolio.cash >= cost:
+                portfolio.cash -= cost
+                if existing_pos:
+                    tot_cost = (existing_pos.quantity * existing_pos.average_price) + cost
+                    existing_pos.quantity += final_qty
+                    existing_pos.average_price = tot_cost / existing_pos.quantity
+                    existing_pos.current_price = price
+                else:
+                    new_pos = PositionDB(
                         id=str(uuid.uuid4()),
                         user_id=portfolio.user_id,
                         ticker=ticker,
-                        action="BUY",
                         quantity=final_qty,
-                        price=price,
-                        strategy="SMA+RSI+ATR",
-                        reason=reason
+                        average_price=price,
+                        current_price=price,
+                        peak_price=price
                     )
-                    db.add(trade)
-                    db.commit()
-                    executed_trades.append({"ticker": ticker, "action": "BUY", "quantity": final_qty, "reason": reason})
+                    db.add(new_pos)
+
+                trade = TradeDB(
+                    id=str(uuid.uuid4()),
+                    user_id=portfolio.user_id,
+                    ticker=ticker,
+                    action="BUY",
+                    quantity=final_qty,
+                    price=price,
+                    strategy="SMA+RSI+ATR",
+                    reason=reason
+                )
+                db.add(trade)
+                db.commit()
+                executed_trades.append({"ticker": ticker, "action": "BUY", "quantity": final_qty, "reason": reason, "score": round(cand["score"], 2)})
+
+        # 7. Portfolio Rotation: Swap weak HOLD positions for higher-scoring BUY opportunities
+        # If a stock we hold now shows "HOLD" (weakening trend) and a much better BUY candidate
+        # exists that we don't own, rotate capital into the better opportunity.
+        ROTATION_THRESHOLD = 15  # New candidate must score 15+ points higher to trigger rotation
+
+        owned_tickers = {p.ticker for p in db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()}
+        unowned_buys = [c for c in buy_candidates if c["ticker"] not in owned_tickers]
+
+        if unowned_buys:
+            holdings_snapshot = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+            for holding in holdings_snapshot:
+                # Don't rotate a position we just bought this cycle
+                if any(t["ticker"] == holding.ticker and t["action"] == "BUY" for t in executed_trades):
+                    continue
+
+                # Re-check signal for existing holding
+                res = self.run_strategy(holding.ticker, execute=False)
+                if res.get("signal") != "HOLD":
+                    continue  # Only rotate genuine HOLD positions (SELL is already handled above)
+
+                # Score of the weakening HOLD position
+                sma5_h = res.get("sma5", 0)
+                sma20_h = res.get("sma20", 1)
+                hold_score = ((sma5_h - max(sma20_h, 1.0)) / max(sma20_h, 1.0) * 100) + (res.get("rsi14", 50) - 50)
+
+                # Best unowned BUY candidate
+                best = unowned_buys[0]
+                if best["score"] <= hold_score + ROTATION_THRESHOLD:
+                    continue  # Not a meaningful enough improvement to justify rotation
+
+                # --- SELL the HOLD position ---
+                exit_price = res.get("price") or self.get_stock_price(holding.ticker)
+                if not exit_price or exit_price <= 0:
+                    continue
+
+                proceeds = exit_price * holding.quantity
+                pnl = (exit_price - holding.average_price) * holding.quantity
+                portfolio.cash += proceeds
+
+                db.add(TradeDB(
+                    id=str(uuid.uuid4()),
+                    user_id=portfolio.user_id,
+                    ticker=holding.ticker,
+                    action="SELL",
+                    quantity=holding.quantity,
+                    price=exit_price,
+                    pnl=pnl,
+                    strategy="ROTATION",
+                    reason=f"\ud83d\udd04 Rotating out of {holding.ticker} (momentum score: {hold_score:.1f}) \u2192 {best['ticker']} (score: {best['score']:.1f})"
+                ))
+                db.delete(holding)
+                db.commit()
+                executed_trades.append({"ticker": holding.ticker, "action": "SELL", "reason": "ROTATION", "pnl": round(pnl, 2)})
+
+                # --- BUY the better candidate ---
+                buy_ticker = best["ticker"]
+                buy_price = best.get("price")
+                if buy_price and buy_price > 0 and portfolio.cash >= buy_price:
+                    ex_new = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == buy_ticker).first()
+                    ex_val = (ex_new.quantity * buy_price) if ex_new else 0
+                    investable_rot = min(portfolio.cash, (total_portfolio_value * MAX_CONCENTRATION) - ex_val)
+                    qty_rot = int(investable_rot // buy_price)
+                    final_rot_qty = max(1, min(max(best.get("atr_qty", 5), 5), qty_rot)) if qty_rot > 0 else 0
+                    rot_cost = buy_price * final_rot_qty
+
+                    if final_rot_qty > 0 and portfolio.cash >= rot_cost:
+                        portfolio.cash -= rot_cost
+                        if ex_new:
+                            tot_rot = (ex_new.quantity * ex_new.average_price) + rot_cost
+                            ex_new.quantity += final_rot_qty
+                            ex_new.average_price = tot_rot / ex_new.quantity
+                            ex_new.current_price = buy_price
+                        else:
+                            db.add(PositionDB(
+                                id=str(uuid.uuid4()),
+                                user_id=portfolio.user_id,
+                                ticker=buy_ticker,
+                                quantity=final_rot_qty,
+                                average_price=buy_price,
+                                current_price=buy_price,
+                                peak_price=buy_price
+                            ))
+                        db.add(TradeDB(
+                            id=str(uuid.uuid4()),
+                            user_id=portfolio.user_id,
+                            ticker=buy_ticker,
+                            action="BUY",
+                            quantity=final_rot_qty,
+                            price=buy_price,
+                            strategy="ROTATION",
+                            reason=f"\ud83d\udd04 Rotation into {buy_ticker}: {best.get('reason', '')}"
+                        ))
+                        db.commit()
+                        executed_trades.append({"ticker": buy_ticker, "action": "BUY", "reason": "ROTATION", "score": round(best["score"], 2)})
+                        # Remove from unowned list now that we hold it
+                        unowned_buys = [c for c in unowned_buys if c["ticker"] != buy_ticker]
 
         return {"status": "success", "executed_trades": executed_trades, "count": len(executed_trades)}
 
-    async def start_auto_trading(self):
+
+    async def start_auto_trading(self, user_id: Optional[str] = None):
         if self.is_running:
             return
         self.is_running = True
+        self.auto_user_id = user_id  # Remember which user started the bot
         asyncio.create_task(self._run_auto_loop())
 
     def stop_auto_trading(self):
         self.is_running = False
+        self.auto_user_id = None
 
     async def _run_auto_loop(self):
-        print("Starting auto-trading loop...")
+        """Full 60-second cycle: trailing stop checks + sell signals + buy signals.
+        Runs entirely on the backend so the bot auto-reinvests after profit booking
+        without any user interaction."""
+        from database import SessionLocal
+        print("[AutoBot] Starting full-cycle auto-trading loop (2×ATR14 trailing stop)...")
         while self.is_running:
-            print("Auto-trading scan started...")
-            self.check_stop_losses()
+            if self.auto_user_id:
+                db = SessionLocal()
+                try:
+                    result = self.run_auto_cycle_db(db, user_id=self.auto_user_id)
+                    trades = result.get("executed_trades", [])
+                    if trades:
+                        print(f"[AutoBot] Cycle complete — {len(trades)} trade(s): {[t['ticker'] + ' ' + t['action'] for t in trades]}")
+                    else:
+                        print("[AutoBot] Cycle complete — no trades executed (HOLD on all positions)")
+                except Exception as e:
+                    import traceback
+                    print(f"[AutoBot] Cycle error: {e}\n{traceback.format_exc()}")
+                finally:
+                    db.close()
+            else:
+                print("[AutoBot] No user_id set — waiting for authenticated Start Bot click")
             await asyncio.sleep(60)
-

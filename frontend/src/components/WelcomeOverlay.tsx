@@ -1,0 +1,184 @@
+import React, { useState, useEffect } from 'react';
+import { Box, Typography, Button, LinearProgress } from '@mui/material';
+import { getISTDate, isMarketOpen, isWeekend } from './MarketGuardToast';
+
+export const WelcomeOverlay: React.FC = () => {
+  const [open, setOpen] = useState(true);
+  const [countdown, setCountdown] = useState(5);
+  const [marketStatus, setMarketStatus] = useState<{ text: string; type: 'open' | 'closed' | 'weekend' }>({
+    text: 'Checking market...',
+    type: 'closed'
+  });
+
+  useEffect(() => {
+    const { dayName } = getISTDate();
+    if (isWeekend()) {
+      setMarketStatus({ text: `${dayName} — Market Closed`, type: 'weekend' });
+    } else if (isMarketOpen()) {
+      setMarketStatus({ text: 'NSE Market is OPEN (9:15 AM – 3:30 PM IST)', type: 'open' });
+    } else {
+      setMarketStatus({ text: 'NSE Market is Closed Today', type: 'closed' });
+    }
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setOpen(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  if (!open) return null;
+
+  const formattedDate = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata'
+  });
+
+  return (
+    <Box className="welcome-overlay-container">
+      <Box className="welcome-card-box">
+        {/* Animated Brand Icon Logo */}
+        <Box className="welcome-logo-icon">📊</Box>
+
+        <Typography variant="h5" fontWeight="800" sx={{ color: 'white', letterSpacing: '-0.5px', mb: 0.5, fontFamily: '"Outfit", sans-serif', fontSize: '26px' }}>
+          Welcome back, Sam!
+        </Typography>
+
+        <Typography variant="body2" sx={{ color: '#B3B3B3', fontSize: '13px', mb: 3, fontFamily: '"Outfit", sans-serif' }}>
+          {formattedDate} · NSE / BSE
+        </Typography>
+
+        {/* IST Market Status Badge */}
+        <Box
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2.2,
+            py: 0.9,
+            borderRadius: '50px',
+            fontSize: '12px',
+            fontWeight: 700,
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase',
+            mb: 3,
+            bgcolor: marketStatus.type === 'open' ? 'rgba(29, 185, 84, 0.15)' : marketStatus.type === 'weekend' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(233, 20, 41, 0.15)',
+            border: marketStatus.type === 'open' ? '1px solid rgba(29, 185, 84, 0.35)' : marketStatus.type === 'weekend' ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid rgba(233, 20, 41, 0.35)',
+            color: marketStatus.type === 'open' ? '#1DB954' : marketStatus.type === 'weekend' ? '#a855f7' : '#E91429'
+          }}
+        >
+          <Box
+            sx={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              bgcolor: 'currentColor',
+              animation: 'pulse-dot 2s infinite'
+            }}
+          />
+          <span>{marketStatus.text}</span>
+        </Box>
+
+        {/* Market Schedule Grid (Exact ui_demo/index.html) */}
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 1.2,
+            mb: 3.5,
+            textAlign: 'left'
+          }}
+        >
+          <Box sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', p: 1.5 }}>
+            <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.2px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+              TRADING DAYS
+            </Typography>
+            <Typography variant="body2" sx={{ fontSize: '13px', fontWeight: 700, color: 'white', fontFamily: 'JetBrains Mono, monospace' }}>
+              Mon — Fri
+            </Typography>
+          </Box>
+
+          <Box sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', p: 1.5 }}>
+            <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.2px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+              MARKET HOURS (IST)
+            </Typography>
+            <Typography variant="body2" sx={{ fontSize: '13px', fontWeight: 700, color: 'white', fontFamily: 'JetBrains Mono, monospace' }}>
+              9:15 AM – 3:30 PM
+            </Typography>
+          </Box>
+
+          <Box sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', p: 1.5 }}>
+            <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.2px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+              PRE-MARKET SESSION
+            </Typography>
+            <Typography variant="body2" sx={{ fontSize: '13px', fontWeight: 700, color: 'white', fontFamily: 'JetBrains Mono, monospace' }}>
+              9:00 – 9:15 AM
+            </Typography>
+          </Box>
+
+          <Box sx={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', p: 1.5 }}>
+            <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.2px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
+              WEEKEND / HOLIDAYS
+            </Typography>
+            <Typography variant="body2" sx={{ fontSize: '13px', fontWeight: 700, color: 'white', fontFamily: 'JetBrains Mono, monospace' }}>
+              Market Closed
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* 5-Second Countdown Progress Bar */}
+        <Box sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '50px', height: '4px', mb: 1.2, overflow: 'hidden' }}>
+          <LinearProgress
+            variant="determinate"
+            value={(countdown / 5) * 100}
+            sx={{
+              height: '100%',
+              bgcolor: 'transparent',
+              '& .MuiLinearProgress-bar': {
+                background: 'linear-gradient(90deg, #1DB954, #1ed760)'
+              }
+            }}
+          />
+        </Box>
+
+        <Typography variant="caption" sx={{ fontSize: '12px', color: '#B3B3B3', display: 'block', mb: 2.5 }}>
+          Continuing in <span style={{ color: 'white', fontWeight: 700 }}>{countdown}</span>s
+        </Typography>
+
+        <Button
+          variant="contained"
+          onClick={() => setOpen(false)}
+          sx={{
+            py: 1.5,
+            px: 4.5,
+            borderRadius: '50px',
+            background: 'linear-gradient(135deg, #1DB954, #1ed760)',
+            color: '#000000 !important',
+            fontFamily: '"Outfit", sans-serif',
+            fontSize: '14px',
+            fontWeight: 800,
+            boxShadow: '0 4px 20px rgba(29,185,84,0.3)',
+            transition: 'all 0.25s ease',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #1ed760, #1DB954)',
+              transform: 'translateY(-2px)',
+              boxShadow: '0 8px 30px rgba(29,185,84,0.4)'
+            }
+          }}
+        >
+          Continue to Dashboard →
+        </Button>
+      </Box>
+    </Box>
+  );
+};

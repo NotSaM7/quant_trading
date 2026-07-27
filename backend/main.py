@@ -165,9 +165,9 @@ def run_strategy(ticker: str, quantity: int = 5):
 
 @app.post("/api/auto/start")
 @app.post("/auto/start")
-async def start_auto():
-    await trading_engine_instance.start_auto_trading()
-    return {"status": "started"}
+async def start_auto(current_user: UserResponse = Depends(get_current_user)):
+    await trading_engine_instance.start_auto_trading(user_id=current_user.id)
+    return {"status": "started", "user_id": current_user.id}
 
 @app.post("/api/auto/stop")
 @app.post("/auto/stop")
@@ -207,12 +207,31 @@ def run_backtest(ticker: str = "RELIANCE.NS", months: int = 12, initial_capital:
 @app.get("/api/stocks")
 @app.get("/stocks")
 def get_stocks(q: str = ""):
-    q = q.lower()
-    if not q:
+    q_strip = q.strip().upper()
+    if not q_strip:
         return INDIAN_STOCKS[:10]
     
+    q_lower = q_strip.lower()
     filtered = [
         s for s in INDIAN_STOCKS 
-        if q in s["symbol"].lower() or q in s["name"].lower()
+        if q_lower in s["symbol"].lower() or q_lower in s["name"].lower()
     ]
+
+    # If user typed something specific that isn't directly in our list, add it as a dynamic option
+    formatted_ticker = q_strip if q_strip.endswith(".NS") or q_strip.endswith(".BO") else f"{q_strip}.NS"
+    has_exact = any(s["symbol"].upper() == formatted_ticker for s in filtered)
+    
+    if not has_exact and len(q_strip) >= 2:
+        filtered.insert(0, {"symbol": formatted_ticker, "name": f"{q_strip} (NSE Stock)"})
+        
     return filtered[:20]
+
+@app.post("/api/book-profit")
+@app.post("/book-profit")
+def book_profit(
+    db: Session = Depends(get_db),
+    current_user: Optional[UserResponse] = Depends(get_current_user_optional)
+):
+    user_id = current_user.id if current_user else None
+    return trading_engine_instance.book_profit_db(db, user_id=user_id)
+

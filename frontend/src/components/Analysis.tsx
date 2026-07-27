@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
     Box, Typography, Table, TableBody, TableCell, TableHead, TableRow,
-    CircularProgress, Chip, Button, Select, MenuItem, FormControl, Paper
+    CircularProgress, Button, Select, MenuItem, FormControl, Paper
 } from '@mui/material';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { getAnalysis, runBacktest, type AnalysisMetrics, type BacktestResult } from '../api';
-import SecurityIcon from '@mui/icons-material/Security';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
+import SecurityIcon from '@mui/icons-material/Security';
 import SpeedIcon from '@mui/icons-material/Speed';
 import InfoIcon from '@mui/icons-material/Info';
 
@@ -77,56 +77,197 @@ const Analysis: React.FC = () => {
         trades: []
     };
 
-    if (loading) return <Box display="flex" justifyContent="center" py={6}><CircularProgress color="success" /></Box>;
+    if (loading) return <Box display="flex" justifyContent="center" py={8}><CircularProgress sx={{ color: '#00d4aa' }} /></Box>;
+
+    // Find Best & Worst Trades
+    const closedTrades = activeMetrics.trades.filter(t => t.pnl !== null && t.pnl !== undefined);
+    let bestTrade = closedTrades.length > 0 ? closedTrades.reduce((prev, curr) => (curr.pnl || 0) > (prev.pnl || 0) ? curr : prev) : null;
+    let worstTrade = closedTrades.length > 0 ? closedTrades.reduce((prev, curr) => (curr.pnl || 0) < (prev.pnl || 0) ? curr : prev) : null;
+
+    // Cumulative P&L points for chart
+    const cumulativePnlData = closedTrades
+        .slice()
+        .reverse()
+        .map((t, idx, arr) => {
+            const cumPnl = arr.slice(0, idx + 1).reduce((acc, x) => acc + (x.pnl || 0), 0);
+            return {
+                label: `${t.ticker.replace('.NS', '')}`,
+                tradePnl: t.pnl || 0,
+                cumPnl: cumPnl
+            };
+        });
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5 }}>
 
             {/* Top Bar / Heading */}
             <Box>
-                <Typography variant="h5" fontWeight="bold">Quant Performance & Strategic Analytics</Typography>
-                <Typography variant="body2" color="text.secondary">
-                    Real-time execution metrics, ATR volatility position sizing, automated stop-loss protection, and 6–12 month historical backtests.
+                <Typography
+                    variant="h4"
+                    fontWeight="800"
+                    sx={{
+                        fontFamily: '"Outfit", sans-serif',
+                        letterSpacing: '-1px',
+                        background: 'linear-gradient(135deg, #fff 0%, #94a3b8 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent'
+                    }}
+                >
+                    Analysis & Performance
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5, fontFamily: '"Outfit", sans-serif' }}>
+                    Performance overview · Real-time execution metrics, P&L curve, and 6–12 month historical backtesting.
                 </Typography>
             </Box>
 
-            {/* Live Metrics Cards */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 2 }}>
-                <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, background: 'linear-gradient(135deg, #1e3a8a, #3b82f6)' }}>
-                    <Typography variant="caption" color="rgba(255,255,255,0.7)" fontWeight="bold">TOTAL P&L</Typography>
-                    <Typography variant="h4" fontWeight="bold">
-                        {activeMetrics.total_pnl >= 0 ? '+' : ''}{formatCurrency(activeMetrics.total_pnl)}
+            {/* 5 Analysis Stat Cards (Matching Demo UI) */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 2 }}>
+                <Box className="stat-card-glass green">
+                    <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', mb: 0.5 }}>
+                        TOTAL TRADES
+                    </Typography>
+                    <Typography variant="h5" fontWeight="800" sx={{ color: 'white', fontFamily: '"JetBrains Mono", monospace' }}>
+                        {activeMetrics.total_trades || 0}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontSize: '11px' }}>Since inception</Typography>
+                </Box>
+
+                <Box className="stat-card-glass blue">
+                    <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', mb: 0.5 }}>
+                        WIN RATE
+                    </Typography>
+                    <Typography variant="h5" fontWeight="800" sx={{ color: '#00d4aa', fontFamily: '"JetBrains Mono", monospace' }}>
+                        {(activeMetrics.win_rate || 0).toFixed(1)}%
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontSize: '11px' }}>Winning execution ratio</Typography>
+                </Box>
+
+                <Box className="stat-card-glass green">
+                    <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', mb: 0.5 }}>
+                        BEST TRADE
+                    </Typography>
+                    <Typography variant="h5" fontWeight="800" sx={{ color: '#22c55e', fontFamily: '"JetBrains Mono", monospace' }}>
+                        {bestTrade ? `+${formatCurrency(bestTrade.pnl)}` : '₹0.00'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontSize: '11px' }}>
+                        {bestTrade ? bestTrade.ticker.replace('.NS', '') : 'N/A'}
                     </Typography>
                 </Box>
-                <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, background: '#282828' }}>
-                    <Typography variant="caption" color="text.secondary" fontWeight="bold">WIN RATE</Typography>
-                    <Typography variant="h4" fontWeight="bold" color="success.main">{(activeMetrics.win_rate || 0).toFixed(1)}%</Typography>
+
+                <Box className="stat-card-glass purple">
+                    <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', mb: 0.5 }}>
+                        WORST TRADE
+                    </Typography>
+                    <Typography variant="h5" fontWeight="800" sx={{ color: '#ef4444', fontFamily: '"JetBrains Mono", monospace' }}>
+                        {worstTrade ? formatCurrency(worstTrade.pnl) : '₹0.00'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontSize: '11px' }}>
+                        {worstTrade ? worstTrade.ticker.replace('.NS', '') : 'N/A'}
+                    </Typography>
                 </Box>
-                <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, background: '#282828' }}>
-                    <Typography variant="caption" color="text.secondary" fontWeight="bold">PROFIT FACTOR</Typography>
-                    <Typography variant="h4" fontWeight="bold">{(activeMetrics.profit_factor || 0).toFixed(2)}</Typography>
+
+                <Box className="stat-card-glass blue">
+                    <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', mb: 0.5 }}>
+                        TOTAL P&L
+                    </Typography>
+                    <Typography variant="h5" fontWeight="800" sx={{ color: activeMetrics.total_pnl >= 0 ? '#22c55e' : '#ef4444', fontFamily: '"JetBrains Mono", monospace' }}>
+                        {activeMetrics.total_pnl >= 0 ? '+' : ''}{formatCurrency(activeMetrics.total_pnl)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: activeMetrics.total_pnl >= 0 ? '#22c55e' : '#ef4444', fontSize: '11px', fontWeight: 600 }}>
+                        {activeMetrics.total_pnl >= 0 ? '▲ Realized gain' : '▼ Realized loss'}
+                    </Typography>
                 </Box>
-                <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, background: '#282828' }}>
-                    <Typography variant="caption" color="text.secondary" fontWeight="bold">TOTAL TRADES</Typography>
-                    <Typography variant="h4" fontWeight="bold">{activeMetrics.total_trades || 0}</Typography>
+            </Box>
+
+            {/* --- Cumulative P&L & Per-Trade Charts (Matching Demo UI) --- */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2.5 }}>
+
+                {/* Cumulative P&L Line Chart */}
+                <Box sx={{ background: '#121212', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '12px', p: 3 }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="h6" fontWeight="700" color="white" sx={{ fontSize: '15px' }}>
+                            📈 Cumulative P&L
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#B3B3B3', fontSize: '11px', fontWeight: 600 }}>
+                            Realized growth curve
+                        </Typography>
+                    </Box>
+                    <Box sx={{ height: 220, width: '100%' }}>
+                        {cumulativePnlData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={cumulativePnlData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                    <XAxis dataKey="label" stroke="#B3B3B3" tick={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} />
+                                    <YAxis stroke="#B3B3B3" tick={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#181818', borderColor: 'rgba(29,185,84,0.3)', borderRadius: 8, color: '#fff', fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+                                        formatter={(val: any) => [formatCurrency(val), 'Cumulative P&L']}
+                                    />
+                                    <Line type="monotone" dataKey="cumPnl" stroke="#1DB954" strokeWidth={2.5} dot={{ fill: '#1DB954', r: 4 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                                <Typography variant="caption" color="#B3B3B3">No closed trades yet to generate P&L curve</Typography>
+                            </Box>
+                        )}
+                    </Box>
+                </Box>
+
+                {/* Per Trade Bar View */}
+                <Box sx={{ background: '#121212', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '12px', p: 3 }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="h6" fontWeight="700" color="white" sx={{ fontSize: '15px' }}>
+                            📊 P&L Per Trade
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#B3B3B3', fontSize: '11px', fontWeight: 600 }}>
+                            Individual trade outcomes
+                        </Typography>
+                    </Box>
+                    <Box sx={{ height: 220, width: '100%' }}>
+                        {cumulativePnlData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={cumulativePnlData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                    <XAxis dataKey="label" stroke="#B3B3B3" tick={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} />
+                                    <YAxis stroke="#B3B3B3" tick={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#181818', borderColor: 'rgba(29,185,84,0.3)', borderRadius: 8, color: '#fff', fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+                                        formatter={(val: any) => [formatCurrency(val), 'Trade P&L']}
+                                    />
+                                    <Bar dataKey="tradePnl" radius={[4, 4, 0, 0]}>
+                                        {cumulativePnlData.map((entry, idx) => (
+                                            <Cell key={`cell-${idx}`} fill={entry.tradePnl >= 0 ? '#1DB954' : '#E91429'} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                                <Typography variant="caption" color="#B3B3B3">No closed trades yet</Typography>
+                            </Box>
+                        )}
+                    </Box>
                 </Box>
             </Box>
 
             {/* --- SECTION 1: 6–12 MONTH HISTORICAL BACKTEST ENGINE --- */}
-            <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, bgcolor: '#181818' }}>
+            <Box sx={{ background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: '20px', p: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
                     <Box display="flex" alignItems="center" gap={1}>
-                        <ShowChartIcon color="success" />
-                        <Typography variant="h6" fontWeight="bold">Historical Backtest Module (6–12 Months)</Typography>
+                        <ShowChartIcon sx={{ color: '#00d4aa' }} />
+                        <Typography variant="h6" fontWeight="700" color="white" sx={{ fontSize: '16px' }}>
+                            Historical Backtest Module (6–12 Months)
+                        </Typography>
                     </Box>
 
                     {/* Backtest Controls */}
-                    <Box display="flex" alignItems="center" gap={2}>
+                    <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
                         <FormControl size="small" sx={{ minWidth: 180 }}>
                             <Select
                                 value={backtestTicker}
                                 onChange={(e) => setBacktestTicker(e.target.value as string)}
-                                sx={{ color: 'white', bgcolor: '#282828', borderRadius: 1 }}
+                                sx={{ color: 'white', bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.08)', fontSize: '13px' }}
                             >
                                 {POPULAR_TICKERS.map(t => (
                                     <MenuItem key={t.symbol} value={t.symbol}>{t.symbol} ({t.name})</MenuItem>
@@ -138,7 +279,7 @@ const Analysis: React.FC = () => {
                             <Select
                                 value={backtestMonths}
                                 onChange={(e) => setBacktestMonths(Number(e.target.value))}
-                                sx={{ color: 'white', bgcolor: '#282828', borderRadius: 1 }}
+                                sx={{ color: 'white', bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.08)', fontSize: '13px' }}
                             >
                                 <MenuItem value={6}>6 Months</MenuItem>
                                 <MenuItem value={12}>12 Months</MenuItem>
@@ -147,10 +288,19 @@ const Analysis: React.FC = () => {
 
                         <Button
                             variant="contained"
-                            color="success"
                             onClick={handleRunBacktest}
                             disabled={backtestLoading}
-                            sx={{ borderRadius: 20, px: 3 }}
+                            sx={{
+                                borderRadius: 50,
+                                px: 3,
+                                py: 0.8,
+                                fontWeight: 800,
+                                fontSize: '13px',
+                                background: '#1DB954',
+                                color: '#000',
+                                textTransform: 'none',
+                                '&:hover': { background: '#1ed760' }
+                            }}
                         >
                             {backtestLoading ? <CircularProgress size={20} color="inherit" /> : "Run Simulation"}
                         </Button>
@@ -161,58 +311,57 @@ const Analysis: React.FC = () => {
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         {/* Backtest Key Stats */}
                         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 2 }}>
-                            <Box sx={{ p: 2, bgcolor: '#222', borderRadius: 2, borderLeft: '4px solid #1DB954' }}>
-                                <Typography variant="caption" color="text.secondary">TOTAL RETURN</Typography>
-                                <Typography variant="h6" fontWeight="bold" color={backtestResult.total_return_pct >= 0 ? "success.main" : "error.main"}>
+                            <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, borderLeft: '4px solid #00d4aa' }}>
+                                <Typography variant="caption" color="#64748b" fontWeight="bold">TOTAL RETURN</Typography>
+                                <Typography variant="h6" fontWeight="800" sx={{ fontFamily: 'JetBrains Mono', color: backtestResult.total_return_pct >= 0 ? "#22c55e" : "#ef4444" }}>
                                     {backtestResult.total_return_pct >= 0 ? '+' : ''}{backtestResult.total_return_pct}%
                                 </Typography>
                             </Box>
 
-                            <Box sx={{ p: 2, bgcolor: '#222', borderRadius: 2, borderLeft: '4px solid #ef4444' }}>
-                                <Typography variant="caption" color="text.secondary">MAX DRAWDOWN</Typography>
-                                <Typography variant="h6" fontWeight="bold" color="error.main">
+                            <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, borderLeft: '4px solid #ef4444' }}>
+                                <Typography variant="caption" color="#64748b" fontWeight="bold">MAX DRAWDOWN</Typography>
+                                <Typography variant="h6" fontWeight="800" sx={{ fontFamily: 'JetBrains Mono', color: '#ef4444' }}>
                                     -{backtestResult.max_drawdown_pct}%
                                 </Typography>
                             </Box>
 
-                            <Box sx={{ p: 2, bgcolor: '#222', borderRadius: 2, borderLeft: '4px solid #3b82f6' }}>
-                                <Typography variant="caption" color="text.secondary">SHARPE RATIO</Typography>
-                                <Typography variant="h6" fontWeight="bold">
+                            <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, borderLeft: '4px solid #3b82f6' }}>
+                                <Typography variant="caption" color="#64748b" fontWeight="bold">SHARPE RATIO</Typography>
+                                <Typography variant="h6" fontWeight="800" sx={{ fontFamily: 'JetBrains Mono', color: 'white' }}>
                                     {backtestResult.sharpe_ratio}
                                 </Typography>
                             </Box>
 
-                            <Box sx={{ p: 2, bgcolor: '#222', borderRadius: 2, borderLeft: '4px solid #a855f7' }}>
-                                <Typography variant="caption" color="text.secondary">WIN RATE</Typography>
-                                <Typography variant="h6" fontWeight="bold">
+                            <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, borderLeft: '4px solid #a855f7' }}>
+                                <Typography variant="caption" color="#64748b" fontWeight="bold">WIN RATE</Typography>
+                                <Typography variant="h6" fontWeight="800" sx={{ fontFamily: 'JetBrains Mono', color: '#00d4aa' }}>
                                     {backtestResult.win_rate}%
                                 </Typography>
                             </Box>
 
-                            <Box sx={{ p: 2, bgcolor: '#222', borderRadius: 2, borderLeft: '4px solid #f59e0b' }}>
-                                <Typography variant="caption" color="text.secondary">TOTAL TRADES</Typography>
-                                <Typography variant="h6" fontWeight="bold">
+                            <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, borderLeft: '4px solid #f59e0b' }}>
+                                <Typography variant="caption" color="#64748b" fontWeight="bold">TOTAL TRADES</Typography>
+                                <Typography variant="h6" fontWeight="800" sx={{ fontFamily: 'JetBrains Mono', color: 'white' }}>
                                     {backtestResult.total_trades}
                                 </Typography>
                             </Box>
                         </Box>
 
                         {/* Backtest Equity Curve Chart */}
-                        <Box sx={{ height: 320, mt: 1 }}>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        <Box sx={{ height: 300, mt: 1 }}>
+                            <Typography variant="body2" color="#64748b" sx={{ mb: 1.5, fontWeight: 600 }}>
                                 Simulated Equity Curve ({backtestResult.ticker} over {backtestResult.months} Months)
                             </Typography>
                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={backtestResult.equity_curve}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#2b2b2b" />
-                                    <XAxis dataKey="date" stroke="#666" tick={{ fontSize: 11 }} />
-                                    <YAxis stroke="#666" domain={['auto', 'auto']} tick={{ fontSize: 11 }} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                    <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} />
+                                    <YAxis stroke="#64748b" domain={['auto', 'auto']} tick={{ fontSize: 10, fontFamily: 'JetBrains Mono' }} />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: '#222', borderColor: '#444', color: '#fff' }}
+                                        contentStyle={{ backgroundColor: '#0d1117', borderColor: 'rgba(0,212,170,0.3)', borderRadius: 8, color: '#fff', fontSize: '12px', fontFamily: 'JetBrains Mono' }}
                                         formatter={(val: any) => [formatCurrency(val), 'Value']}
                                     />
-                                    <Legend />
-                                    <Line type="monotone" dataKey="equity" name="Portfolio Equity (₹)" stroke="#1DB954" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="equity" name="Portfolio Equity (₹)" stroke="#1DB954" strokeWidth={2.5} dot={false} />
                                     <Line type="monotone" dataKey="close" name="Stock Price (₹)" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
                                 </LineChart>
                             </ResponsiveContainer>
@@ -221,113 +370,146 @@ const Analysis: React.FC = () => {
                 )}
             </Box>
 
-            {/* --- SECTION 2: QUANTITATIVE MODEL DISCLOSURES & ANALYTICAL MATURITY --- */}
-            <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, bgcolor: '#141414', border: '1px solid #333' }}>
+            {/* --- SECTION 2: QUANTITATIVE MODEL ARCHITECTURE --- */}
+            <Box sx={{ background: '#121212', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '12px', p: 3 }}>
                 <Box display="flex" alignItems="center" gap={1} mb={2}>
-                    <InfoIcon color="primary" />
-                    <Typography variant="h6" fontWeight="bold">Model Architecture & Analytical Disclosures</Typography>
+                    <InfoIcon sx={{ color: '#1DB954' }} />
+                    <Typography variant="h6" fontWeight="700" color="white" sx={{ fontSize: '16px' }}>
+                        Model Architecture &amp; Analytical Disclosures
+                    </Typography>
                 </Box>
 
-                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 2 }}>
-                    {/* Item 1: ATR Position Sizing */}
-                    <Paper sx={{ p: 2, bgcolor: '#1e1e1e', borderRadius: 2, height: '100%' }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 2 }}>
+                    <Paper sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)' }}>
                         <Box display="flex" alignItems="center" gap={1} mb={1}>
-                            <SpeedIcon fontSize="small" sx={{ color: '#1DB954' }} />
+                            <SpeedIcon fontSize="small" sx={{ color: '#00d4aa' }} />
                             <Typography variant="subtitle2" fontWeight="bold" color="white">
                                 1. Volatility Overlay (14-period ATR)
                             </Typography>
                         </Box>
-                        <Typography variant="body2" color="text.secondary">
-                            Positions are sized dynamically based on 14-day Average True Range (ATR) volatility rather than naive equal weighting. Maximum capital risk per trade is capped at 2.0% of total portfolio equity.
+                        <Typography variant="body2" color="#94a3b8" sx={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            Positions are sized dynamically based on 14-day Average True Range (ATR) volatility. Maximum capital risk per trade is capped at 2.0% of total equity.
                         </Typography>
                     </Paper>
 
-                    {/* Item 2: Stop Loss Rules */}
-                    <Paper sx={{ p: 2, bgcolor: '#1e1e1e', borderRadius: 2, height: '100%' }}>
+                    <Paper sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)' }}>
                         <Box display="flex" alignItems="center" gap={1} mb={1}>
                             <SecurityIcon fontSize="small" sx={{ color: '#ef4444' }} />
                             <Typography variant="subtitle2" fontWeight="bold" color="white">
-                                2. Risk Control: 3.0% Max Loss Per Position
+                                2. Trailing Stop Loss (2× ATR14)
                             </Typography>
                         </Box>
-                        <Typography variant="body2" color="text.secondary">
-                            An automated risk trigger monitors open positions during every execution cycle. If a position incurs a drawdown of ≥ 3.0% from entry, an emergency <code>STOP_LOSS</code> sell order is executed immediately.
+                        <Typography variant="body2" color="#94a3b8" sx={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            An automated trailing stop tracks 2× ATR14 below peak price. When triggered, position is closed automatically to lock in gains or cap downside.
                         </Typography>
                     </Paper>
 
-                    {/* Item 3: Confirmation Filter */}
-                    <Paper sx={{ p: 2, bgcolor: '#1e1e1e', borderRadius: 2, height: '100%' }}>
+                    <Paper sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.3)', borderRadius: 2, border: '1px solid rgba(255,255,255,0.06)' }}>
                         <Box display="flex" alignItems="center" gap={1} mb={1}>
                             <ShowChartIcon fontSize="small" sx={{ color: '#3b82f6' }} />
                             <Typography variant="subtitle2" fontWeight="bold" color="white">
                                 3. Dual Momentum Confirmation Filter
                             </Typography>
                         </Box>
-                        <Typography variant="body2" color="text.secondary">
-                            To prevent false breakouts in low-volume or sideways markets, a BUY signal requires both an SMA5 &gt; SMA20 bullish crossover <strong>and</strong> an RSI14 &gt; 50 momentum confirmation filter.
-                        </Typography>
-                    </Paper>
-
-                    {/* Item 4: Historical Limitation Disclosure */}
-                    <Paper sx={{ p: 2, bgcolor: '#1e1e1e', borderRadius: 2, height: '100%' }}>
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                            <InfoIcon fontSize="small" sx={{ color: '#f59e0b' }} />
-                            <Typography variant="subtitle2" fontWeight="bold" color="white">
-                                4. Reporting Limitations & Assumptions
-                            </Typography>
-                        </Box>
-                        <Typography variant="body2" color="text.secondary">
-                            Live dashboard metrics reflect execution from active runtime sessions. For statistical rigor, use the 6–12 Month Historical Backtest module above. Backtest simulations assume zero execution slippage and flat transaction fees.
+                        <Typography variant="body2" color="#94a3b8" sx={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            BUY signals require an SMA5 &gt; SMA20 crossover <strong>and</strong> RSI14 &gt; 50 momentum confirmation filter to eliminate false breakouts.
                         </Typography>
                     </Paper>
                 </Box>
             </Box>
 
             {/* --- SECTION 3: LIVE TRADE HISTORY --- */}
-            <Box className="spotify-card" sx={{ p: 3, borderRadius: 2, bgcolor: '#181818', width: '100%', overflow: 'hidden' }}>
-                <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>Recent Trade History</Typography>
+            <Box sx={{ background: '#121212', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '12px', p: 3, width: '100%', overflow: 'hidden' }}>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Typography variant="h6" fontWeight="700" color="white" sx={{ fontSize: '16px' }}>
+                        🗃 Trade History
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
+                        All executed trades
+                    </Typography>
+                </Box>
+
                 <Box sx={{ overflowX: 'auto', width: '100%' }}>
                     <Table size="small" sx={{ minWidth: 500 }}>
                         <TableHead>
-                            <TableRow>
-                                <TableCell sx={{ color: '#b3b3b3' }}>TIME</TableCell>
-                                <TableCell sx={{ color: '#b3b3b3' }}>TICKER</TableCell>
-                                <TableCell sx={{ color: '#b3b3b3' }}>ACTION</TableCell>
-                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>QTY</TableCell>
-                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>PRICE</TableCell>
-                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>P&L</TableCell>
-                                <TableCell align="right" sx={{ color: '#b3b3b3' }}>STRATEGY</TableCell>
+                            <TableRow sx={{ background: 'rgba(0,0,0,0.2)' }}>
+                                <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>DATE</TableCell>
+                                <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>TICKER</TableCell>
+                                <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>ACTION</TableCell>
+                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>QTY</TableCell>
+                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>PRICE</TableCell>
+                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>STRATEGY</TableCell>
+                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>P&amp;L</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {activeMetrics.trades.map((trade) => (
-                                <TableRow key={trade.id} hover sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
-                                    <TableCell sx={{ color: 'text.secondary' }}>
-                                        {new Date(trade.timestamp).toLocaleString()}
-                                    </TableCell>
-                                    <TableCell sx={{ color: 'white', fontWeight: 600 }}>{trade.ticker}</TableCell>
-                                    <TableCell>
-                                        <Chip
-                                            label={trade.action}
-                                            color={trade.action === "BUY" ? "success" : "error"}
-                                            size="small"
-                                            variant="outlined"
-                                        />
-                                    </TableCell>
-                                    <TableCell align="right" sx={{ color: 'text.secondary' }}>{trade.quantity}</TableCell>
-                                    <TableCell align="right" sx={{ color: 'text.secondary' }}>{formatCurrency(trade.price)}</TableCell>
-                                    <TableCell align="right" sx={{
-                                        color: trade.pnl ? (trade.pnl >= 0 ? 'success.main' : 'error.main') : 'text.disabled',
-                                        fontWeight: 600
-                                    }}>
-                                        {trade.pnl != null ? formatCurrency(trade.pnl) : '-'}
-                                    </TableCell>
-                                    <TableCell align="right" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>{trade.strategy}</TableCell>
-                                </TableRow>
-                            ))}
+                            {activeMetrics.trades.map((trade) => {
+                                const stratColor = trade.strategy === 'ROTATION' ? '#a855f7' : (trade.strategy === 'STOP_LOSS' || trade.strategy === 'TRAILING_STOP' ? '#f59e0b' : '#00d4aa');
+                                return (
+                                    <TableRow key={trade.id} sx={{ borderBottom: '1px solid rgba(255,255,255,0.04)', '&:hover': { bgcolor: 'rgba(0,212,170,0.04)' } }}>
+                                        <TableCell sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '11.5px' }}>
+                                            {new Date(trade.timestamp).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                                        </TableCell>
+                                        <TableCell sx={{ color: 'white', fontWeight: 700, fontFamily: '"Outfit", sans-serif', fontSize: '13px' }}>
+                                            {trade.ticker}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Box
+                                                sx={{
+                                                    display: 'inline-flex',
+                                                    px: 1,
+                                                    py: 0.3,
+                                                    borderRadius: '6px',
+                                                    fontSize: '11px',
+                                                    fontWeight: 700,
+                                                    fontFamily: '"JetBrains Mono", monospace',
+                                                    bgcolor: trade.action === 'BUY' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                                    color: trade.action === 'BUY' ? '#3b82f6' : '#ef4444'
+                                                }}
+                                            >
+                                                {trade.action}
+                                            </Box>
+                                        </TableCell>
+                                        <TableCell align="right" sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>
+                                            {trade.quantity}
+                                        </TableCell>
+                                        <TableCell align="right" sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>
+                                            {formatCurrency(trade.price)}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <span style={{ fontSize: '10px', fontWeight: 700, color: stratColor, backgroundColor: `${stratColor}18`, padding: '2px 7px', borderRadius: '5px', letterSpacing: '0.3px' }}>
+                                                {trade.strategy || 'SMA+RSI'}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            {trade.pnl != null ? (
+                                                <Box
+                                                    sx={{
+                                                        display: 'inline-flex',
+                                                        px: 1,
+                                                        py: 0.3,
+                                                        borderRadius: '6px',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: 700,
+                                                        fontFamily: '"JetBrains Mono", monospace',
+                                                        bgcolor: trade.pnl >= 0 ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                                        color: trade.pnl >= 0 ? '#22c55e' : '#ef4444'
+                                                    }}
+                                                >
+                                                    {trade.pnl >= 0 ? '+' : ''}{formatCurrency(trade.pnl)}
+                                                </Box>
+                                            ) : (
+                                                <span style={{ color: '#64748b', fontSize: '11px' }}>Open</span>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
                             {activeMetrics.trades.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.disabled' }}>No trades recorded</TableCell>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 6, color: '#64748b', borderBottom: 'none' }}>
+                                        No trades recorded yet.
+                                    </TableCell>
                                 </TableRow>
                             )}
                         </TableBody>

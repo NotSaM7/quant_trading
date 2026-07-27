@@ -57,12 +57,16 @@ export interface Position {
     average_price: number;
     current_price: number;
     pnl: number;
+    stop_loss_price?: number;
+    peak_price?: number;            // Highest price reached while holding
+    trailing_stop_price?: number;   // 2×ATR14 below peak — bot exits if live price drops here
 }
 
 export interface PortfolioSummary {
     cash: number;
     equity: number;
     total_value: number;
+    todays_pnl?: number;
     positions: Position[];
 }
 
@@ -140,6 +144,17 @@ export const getAutoStatus = async (): Promise<{ is_running: boolean }> => {
     const response = await api.get('/auto/status');
     return response.data;
 }
+
+export const bookProfit = async (): Promise<{
+    status: string;
+    message: string;
+    sold_positions: any[];
+    total_profit_booked: number;
+    bot_scan_triggered: boolean;
+}> => {
+    const response = await api.post('/book-profit');
+    return response.data;
+};
 
 export const getAnalysis = async (): Promise<AnalysisMetrics> => {
     const response = await api.get<AnalysisMetrics>('/analysis');

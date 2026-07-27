@@ -1,6 +1,6 @@
+import { useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material';
 import Dashboard from './components/Dashboard';
-import Sidebar from './components/Sidebar';
 import MainLayout from './components/MainLayout';
 import { AuthProvider } from './context/AuthContext';
 
@@ -8,7 +8,7 @@ const darkTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#1DB954', // Spotify Green
+      main: '#1DB954',
     },
     background: {
       default: '#000000',
@@ -20,7 +20,7 @@ const darkTheme = createTheme({
     },
   },
   typography: {
-    fontFamily: '"Inter", sans-serif',
+    fontFamily: '"Outfit", sans-serif',
     allVariants: {
       color: '#FFFFFF',
     },
@@ -38,15 +38,14 @@ const darkTheme = createTheme({
 });
 
 function App() {
+  const [tabIndex, setTabIndex] = useState<number>(0);
+
   return (
     <ThemeProvider theme={darkTheme}>
       <AuthProvider>
-        <div style={{ display: 'flex', width: '100%', minHeight: '100vh' }}>
-          <Sidebar />
-          <MainLayout>
-            <Dashboard />
-          </MainLayout>
-        </div>
+        <MainLayout activeTab={tabIndex} onTabChange={setTabIndex}>
+          <Dashboard tabIndex={tabIndex} />
+        </MainLayout>
       </AuthProvider>
     </ThemeProvider>
   );
