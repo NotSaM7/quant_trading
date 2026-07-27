@@ -11,13 +11,23 @@ export const WelcomeOverlay: React.FC = () => {
   });
 
   useEffect(() => {
-    const { dayName } = getISTDate();
+    const { day, h, m } = getISTDate();
+    const mins = h * 60 + m;
+
     if (isWeekend()) {
-      setMarketStatus({ text: `${dayName} — Market Closed`, type: 'weekend' });
+      setMarketStatus({ text: 'NSE MARKET IS CLOSED FOR WEEKEND', type: 'weekend' });
     } else if (isMarketOpen()) {
-      setMarketStatus({ text: 'NSE Market is OPEN (9:15 AM – 3:30 PM IST)', type: 'open' });
+      setMarketStatus({ text: 'NSE / BSE LIVE MARKET OPEN', type: 'open' });
     } else {
-      setMarketStatus({ text: 'NSE Market is Closed Today', type: 'closed' });
+      if (mins < 9 * 60 + 15) {
+        setMarketStatus({ text: 'MARKET WILL OPEN AT 9:15 AM TODAY', type: 'closed' });
+      } else {
+        if (day === 5) {
+          setMarketStatus({ text: 'NSE MARKET IS CLOSED FOR WEEKEND', type: 'weekend' });
+        } else {
+          setMarketStatus({ text: 'MARKET WILL OPEN AT 9:15 AM TOMORROW', type: 'closed' });
+        }
+      }
     }
 
     const timer = setInterval(() => {
