@@ -949,10 +949,21 @@ class TradingEngine:
             if max_invest <= MIN_POSITION_CASH:
                 continue  # Already near max allocation for this stock
 
-            investable = min(portfolio.cash, max_invest)
-            qty_by_cash = int(investable // price)
-            final_qty = max(1, min(max(atr_qty, 5), qty_by_cash)) if qty_by_cash > 0 else 0
+            qty_by_cash = int(portfolio.cash // price)
+            if qty_by_cash <= 0:
+                continue
+
+            max_qty_allowed = int(max_invest // price)
+            if max_qty_allowed <= 0:
+                continue
+
+            final_qty = min(qty_by_cash, max_qty_allowed, max(atr_qty, 1))
+            if final_qty <= 0:
+                continue
+
             cost = price * final_qty
+            if portfolio.cash < cost:
+                continue
 
             if final_qty > 0 and portfolio.cash >= cost:
                 portfolio.cash -= cost
@@ -1047,18 +1058,20 @@ class TradingEngine:
                 if buy_price and buy_price > 0 and portfolio.cash >= buy_price:
                     ex_new = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == buy_ticker).first()
                     ex_val = (ex_new.quantity * buy_price) if ex_new else 0
-                    investable_rot = min(portfolio.cash, (total_portfolio_value * MAX_CONCENTRATION) - ex_val)
-                    qty_rot = int(investable_rot // buy_price)
-                    final_rot_qty = max(1, min(max(best.get("atr_qty", 5), 5), qty_rot)) if qty_rot > 0 else 0
-                    rot_cost = buy_price * final_rot_qty
-
-                    if final_rot_qty > 0 and portfolio.cash >= rot_cost:
-                        portfolio.cash -= rot_cost
-                        if ex_new:
-                            tot_rot = (ex_new.quantity * ex_new.average_price) + rot_cost
-                            ex_new.quantity += final_rot_qty
-                            ex_new.average_price = tot_rot / ex_new.quantity
-                            ex_new.current_price = buy_price
+                    
+                    qty_rot_by_cash = int(portfolio.cash // buy_price)
+                    max_rot_allowed = int(((total_portfolio_value * MAX_CONCENTRATION) - ex_val) // buy_price)
+                    final_rot_qty = min(qty_rot_by_cash, max_rot_allowed, max(best.get("atr_qty", 5), 1))
+                    
+                    if final_rot_qty > 0:
+                        rot_cost = buy_price * final_rot_qty
+                        if portfolio.cash >= rot_cost:
+                            portfolio.cash -= rot_cost
+                            if ex_new:
+                                tot_rot = (ex_new.quantity * ex_new.average_price) + rot_cost
+                                ex_new.quantity += final_rot_qty
+                                ex_new.average_price = tot_rot / ex_new.quantity
+                                ex_new.current_price = buy_price
                         else:
                             db.add(PositionDB(
                                 id=str(uuid.uuid4()),

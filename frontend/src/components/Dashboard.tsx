@@ -49,7 +49,18 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
             setToastMessage(res.message);
             setConfirmBookProfitOpen(false);
             await fetchPortfolio();
-            if (res.bot_scan_triggered) {
+
+            // Only start Auto-Trading Bot if it is NOT running already
+            if (!autoRunning && isAuthenticated) {
+                try {
+                    await startAutoTrading();
+                    setAutoRunning(true);
+                    await triggerAutoScan();
+                } catch (botErr) {
+                    console.error("Auto bot start error after book profit:", botErr);
+                }
+            } else if (res.bot_scan_triggered) {
+                // Bot is already active — just trigger an immediate scan pass
                 triggerAutoScan().catch(err => console.error("Auto scan error:", err));
             }
         } catch (e: any) {
