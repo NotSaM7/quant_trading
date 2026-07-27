@@ -14,7 +14,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
-    const { isAuthenticated, openAuthModal } = useAuth();
+    const { isAuthenticated, openAuthModal, user } = useAuth();
     const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [autoRunning, setAutoRunning] = useState<boolean>(false);
@@ -186,7 +186,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
     return (
         <Box sx={{ pb: 6 }}>
             {/* Welcome Daily Banner */}
-            <WelcomeOverlay />            {/* Sub-Header Tabs & Page Title (Matching UI Demo) */}
+            <WelcomeOverlay user={user} isAuthenticated={isAuthenticated} openAuthModal={openAuthModal} />
+
+            {/* Sub-Header Tabs & Page Title (Matching UI Demo) */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3.5, flexWrap: 'wrap', gap: 2, animation: 'slideDown 0.5s ease both' }}>
                 <Box>
                     <Typography

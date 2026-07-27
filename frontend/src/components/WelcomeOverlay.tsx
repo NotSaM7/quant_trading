@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, Button, LinearProgress } from '@mui/material';
 import { getISTDate, isMarketOpen, isWeekend } from './MarketGuardToast';
 
-export const WelcomeOverlay: React.FC = () => {
+interface WelcomeOverlayProps {
+  user?: { name: string; email: string } | null;
+  isAuthenticated: boolean;
+  openAuthModal: (mode: 'login' | 'register') => void;
+}
+
+export const WelcomeOverlay: React.FC<WelcomeOverlayProps> = ({ user, isAuthenticated, openAuthModal }) => {
   const [open, setOpen] = useState(true);
   const [countdown, setCountdown] = useState(5);
   const [marketStatus, setMarketStatus] = useState<{ text: string; type: 'open' | 'closed' | 'weekend' }>({
@@ -30,19 +36,25 @@ export const WelcomeOverlay: React.FC = () => {
       }
     }
 
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setOpen(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    // Only auto-dismiss countdown if user is authenticated
+    let timer: any = null;
+    if (isAuthenticated) {
+      timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            setOpen(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
 
-    return () => clearInterval(timer);
-  }, []);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isAuthenticated]);
 
   if (!open) return null;
 
@@ -54,14 +66,16 @@ export const WelcomeOverlay: React.FC = () => {
     timeZone: 'Asia/Kolkata'
   });
 
+  const displayName = user?.name ? user.name : 'Trader';
+
   return (
     <Box className="welcome-overlay-container">
       <Box className="welcome-card-box">
         {/* Animated Brand Icon Logo */}
         <Box className="welcome-logo-icon">📊</Box>
 
-        <Typography variant="h5" fontWeight="800" sx={{ color: 'white', letterSpacing: '-0.5px', mb: 0.5, fontFamily: '"Outfit", sans-serif', fontSize: '26px' }}>
-          Welcome back, Sam!
+        <Typography variant="h5" fontWeight="800" sx={{ color: 'white', letterSpacing: '-0.5px', mb: 0.5, fontFamily: '"Outfit", sans-serif', fontSize: '25px' }}>
+          {isAuthenticated ? `Welcome back, ${displayName}!` : 'Welcome to QuantBot Trading Platform!'}
         </Typography>
 
         <Typography variant="body2" sx={{ color: '#B3B3B3', fontSize: '13px', mb: 3, fontFamily: '"Outfit", sans-serif' }}>
@@ -99,7 +113,7 @@ export const WelcomeOverlay: React.FC = () => {
           <span>{marketStatus.text}</span>
         </Box>
 
-        {/* Market Schedule Grid (Exact ui_demo/index.html) */}
+        {/* Market Schedule Grid */}
         <Box
           sx={{
             display: 'grid',
@@ -146,48 +160,121 @@ export const WelcomeOverlay: React.FC = () => {
           </Box>
         </Box>
 
-        {/* 5-Second Countdown Progress Bar */}
-        <Box sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '50px', height: '4px', mb: 1.2, overflow: 'hidden' }}>
-          <LinearProgress
-            variant="determinate"
-            value={(countdown / 5) * 100}
-            sx={{
-              height: '100%',
-              bgcolor: 'transparent',
-              '& .MuiLinearProgress-bar': {
-                background: 'linear-gradient(90deg, #1DB954, #1ed760)'
-              }
-            }}
-          />
-        </Box>
+        {isAuthenticated ? (
+          <>
+            {/* 5-Second Countdown Progress Bar */}
+            <Box sx={{ bgcolor: 'rgba(255,255,255,0.06)', borderRadius: '50px', height: '4px', mb: 1.2, overflow: 'hidden' }}>
+              <LinearProgress
+                variant="determinate"
+                value={(countdown / 5) * 100}
+                sx={{
+                  height: '100%',
+                  bgcolor: 'transparent',
+                  '& .MuiLinearProgress-bar': {
+                    background: 'linear-gradient(90deg, #1DB954, #1ed760)'
+                  }
+                }}
+              />
+            </Box>
 
-        <Typography variant="caption" sx={{ fontSize: '12px', color: '#B3B3B3', display: 'block', mb: 2.5 }}>
-          Continuing in <span style={{ color: 'white', fontWeight: 700 }}>{countdown}</span>s
-        </Typography>
+            <Typography variant="caption" sx={{ fontSize: '12px', color: '#B3B3B3', display: 'block', mb: 2.5 }}>
+              Continuing in <span style={{ color: 'white', fontWeight: 700 }}>{countdown}</span>s
+            </Typography>
 
-        <Button
-          variant="contained"
-          onClick={() => setOpen(false)}
-          sx={{
-            py: 1.5,
-            px: 4.5,
-            borderRadius: '50px',
-            background: 'linear-gradient(135deg, #1DB954, #1ed760)',
-            color: '#000000 !important',
-            fontFamily: '"Outfit", sans-serif',
-            fontSize: '14px',
-            fontWeight: 800,
-            boxShadow: '0 4px 20px rgba(29,185,84,0.3)',
-            transition: 'all 0.25s ease',
-            '&:hover': {
-              background: 'linear-gradient(135deg, #1ed760, #1DB954)',
-              transform: 'translateY(-2px)',
-              boxShadow: '0 8px 30px rgba(29,185,84,0.4)'
-            }
-          }}
-        >
-          Continue to Dashboard →
-        </Button>
+            <Button
+              variant="contained"
+              onClick={() => setOpen(false)}
+              sx={{
+                py: 1.5,
+                px: 4.5,
+                borderRadius: '50px',
+                background: 'linear-gradient(135deg, #1DB954, #1ed760)',
+                color: '#000000 !important',
+                fontFamily: '"Outfit", sans-serif',
+                fontSize: '14px',
+                fontWeight: 800,
+                boxShadow: '0 4px 20px rgba(29,185,84,0.3)',
+                transition: 'all 0.25s ease',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #1ed760, #1DB954)',
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 8px 30px rgba(29,185,84,0.4)'
+                }
+              }}
+            >
+              Continue to Dashboard →
+            </Button>
+          </>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center', width: '100%' }}>
+            <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', width: '100%' }}>
+              <Button
+                variant="contained"
+                onClick={() => { setOpen(false); openAuthModal('login'); }}
+                sx={{
+                  py: 1.3,
+                  px: 4,
+                  borderRadius: '50px',
+                  background: 'linear-gradient(135deg, #1DB954, #1ed760)',
+                  color: '#000000 !important',
+                  fontFamily: '"Outfit", sans-serif',
+                  fontSize: '14px',
+                  fontWeight: 800,
+                  boxShadow: '0 4px 20px rgba(29,185,84,0.3)',
+                  flex: 1,
+                  transition: 'all 0.25s ease',
+                  '&:hover': {
+                    background: '#1ed760',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 8px 25px rgba(29,185,84,0.5)'
+                  }
+                }}
+              >
+                Sign In
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => { setOpen(false); openAuthModal('register'); }}
+                sx={{
+                  py: 1.3,
+                  px: 4,
+                  borderRadius: '50px',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  color: 'white !important',
+                  fontFamily: '"Outfit", sans-serif',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  flex: 1,
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  transition: 'all 0.25s ease',
+                  '&:hover': {
+                    borderColor: '#1DB954',
+                    color: '#1DB954 !important',
+                    bgcolor: 'rgba(29,185,84,0.1)',
+                    transform: 'translateY(-2px)'
+                  }
+                }}
+              >
+                Create Account
+              </Button>
+            </Box>
+
+            <Typography
+              variant="caption"
+              onClick={() => setOpen(false)}
+              sx={{
+                color: '#B3B3B3',
+                fontSize: '12px',
+                cursor: 'pointer',
+                fontFamily: '"Outfit", sans-serif',
+                transition: 'color 0.2s ease',
+                '&:hover': { color: '#1DB954', textDecoration: 'underline' }
+              }}
+            >
+              Explore as Guest →
+            </Typography>
+          </Box>
+        )}
       </Box>
     </Box>
   );
