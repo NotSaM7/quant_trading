@@ -4,7 +4,7 @@ import {
     CircularProgress, Button, Select, MenuItem, FormControl, Paper
 } from '@mui/material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { getAnalysis, runBacktest, type AnalysisMetrics, type BacktestResult } from '../api';
+import { getAnalysis, getPortfolio, runBacktest, type AnalysisMetrics, type BacktestResult, type PortfolioSummary } from '../api';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import SecurityIcon from '@mui/icons-material/Security';
 import SpeedIcon from '@mui/icons-material/Speed';
@@ -29,11 +29,13 @@ const Analysis: React.FC = () => {
     const [backtestMonths, setBacktestMonths] = useState<number>(12);
     const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
     const [backtestLoading, setBacktestLoading] = useState<boolean>(false);
+    const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
 
     const fetchAnalysisData = async () => {
         try {
-            const data = await getAnalysis();
+            const [data, port] = await Promise.all([getAnalysis(), getPortfolio()]);
             setMetrics(data);
+            setPortfolio(port);
         } catch (error) {
             console.error("Failed to fetch analysis", error);
         } finally {
@@ -69,6 +71,20 @@ const Analysis: React.FC = () => {
         });
     };
 
+    const formatDateTime = (timestampStr: string) => {
+        if (!timestampStr) return 'N/A';
+        const date = new Date(timestampStr);
+        if (isNaN(date.getTime())) return timestampStr;
+        return date.toLocaleString('en-IN', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+    };
+
     const activeMetrics = metrics || {
         total_pnl: 0,
         win_rate: 0,
@@ -96,6 +112,12 @@ const Analysis: React.FC = () => {
                 cumPnl: cumPnl
             };
         });
+
+    // Unrealized P&L from open positions
+    const unrealizedPnl = portfolio
+        ? portfolio.positions.reduce((sum, p) => sum + (p.pnl || 0), 0)
+        : 0;
+    const netTotalPnl = activeMetrics.total_pnl + unrealizedPnl;
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5 }}>
@@ -168,13 +190,25 @@ const Analysis: React.FC = () => {
 
                 <Box className="stat-card-glass blue">
                     <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', mb: 0.5 }}>
-                        TOTAL P&L
+                        REALIZED P&L
                     </Typography>
                     <Typography variant="h5" fontWeight="800" sx={{ color: activeMetrics.total_pnl >= 0 ? '#22c55e' : '#ef4444', fontFamily: '"JetBrains Mono", monospace' }}>
                         {activeMetrics.total_pnl >= 0 ? '+' : ''}{formatCurrency(activeMetrics.total_pnl)}
                     </Typography>
                     <Typography variant="caption" sx={{ color: activeMetrics.total_pnl >= 0 ? '#22c55e' : '#ef4444', fontSize: '11px', fontWeight: 600 }}>
-                        {activeMetrics.total_pnl >= 0 ? '▲ Realized gain' : '▼ Realized loss'}
+                        {activeMetrics.total_pnl >= 0 ? '▲ Closed trade profit' : '▼ Closed trade loss'}
+                    </Typography>
+                </Box>
+
+                <Box className="stat-card-glass purple">
+                    <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#64748b', display: 'block', mb: 0.5 }}>
+                        UNREALIZED P&L
+                    </Typography>
+                    <Typography variant="h5" fontWeight="800" sx={{ color: unrealizedPnl >= 0 ? '#a855f7' : '#ef4444', fontFamily: '"JetBrains Mono", monospace' }}>
+                        {unrealizedPnl >= 0 ? '+' : ''}{formatCurrency(unrealizedPnl)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontSize: '11px', fontWeight: 600 }}>
+                        {portfolio ? `${portfolio.positions.length} open position(s)` : 'Open positions'}
                     </Typography>
                 </Box>
             </Box>
@@ -433,7 +467,7 @@ const Analysis: React.FC = () => {
                     <Table size="small" sx={{ minWidth: 500 }}>
                         <TableHead>
                             <TableRow sx={{ background: 'rgba(0,0,0,0.2)' }}>
-                                <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>DATE</TableCell>
+                                <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>DATE &amp; TIME</TableCell>
                                 <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>TICKER</TableCell>
                                 <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>ACTION</TableCell>
                                 <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>QTY</TableCell>
@@ -447,8 +481,8 @@ const Analysis: React.FC = () => {
                                 const stratColor = trade.strategy === 'ROTATION' ? '#a855f7' : (trade.strategy === 'STOP_LOSS' || trade.strategy === 'TRAILING_STOP' ? '#f59e0b' : '#00d4aa');
                                 return (
                                     <TableRow key={trade.id} sx={{ borderBottom: '1px solid rgba(255,255,255,0.04)', '&:hover': { bgcolor: 'rgba(0,212,170,0.04)' } }}>
-                                        <TableCell sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '11.5px' }}>
-                                            {new Date(trade.timestamp).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                                        <TableCell sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
+                                            {formatDateTime(trade.timestamp)}
                                         </TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 700, fontFamily: '"Outfit", sans-serif', fontSize: '13px' }}>
                                             {trade.ticker}

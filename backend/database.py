@@ -44,7 +44,17 @@ def create_db_engine():
                 query=parsed.query
             )
 
-            eng = create_engine(cleaned_url, pool_pre_ping=True)
+            eng = create_engine(
+                cleaned_url,
+                pool_pre_ping=True,
+                pool_size=3,           # max persistent connections per process
+                max_overflow=2,        # burst connections (total: 5 per process)
+                pool_timeout=10,       # seconds to wait for a free connection
+                pool_recycle=1800,     # recycle connections every 30 min
+                connect_args={
+                    "connect_timeout": 10,  # fail fast if Supabase is unreachable
+                },
+            )
             return eng
         except Exception as e:
             print(f"Postgres Connection Warning: {e}, falling back to SQLite")

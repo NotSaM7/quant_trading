@@ -20,11 +20,20 @@ from trading_engine import TradingEngine
 
 app = FastAPI(title="Quant Trading App")
 
-# Initialize database schema safely
-try:
-    init_db()
-except Exception as e:
-    print(f"Startup DB init warning: {e}")
+# Initialize database schema safely — run in a thread with timeout
+# so Supabase connection issues never freeze uvicorn startup
+import threading
+def _startup_init_db():
+    try:
+        init_db()
+    except Exception as e:
+        print(f"Startup DB init warning: {e}")
+
+_db_init_thread = threading.Thread(target=_startup_init_db, daemon=True)
+_db_init_thread.start()
+_db_init_thread.join(timeout=15)  # give Supabase 15s max at startup
+if _db_init_thread.is_alive():
+    print("[Startup] DB init timed out — continuing without schema sync (will retry on first request)")
 
 # Allow CORS
 app.add_middleware(

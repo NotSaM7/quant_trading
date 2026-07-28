@@ -322,20 +322,20 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                             </Box>
                         </Box>
 
-                        {/* Equity */}
+                        {/* Invested Value (was mislabelled as Equity) */}
                         <Box className="stat-card-glass purple" sx={{ display: 'flex', alignItems: 'center', gap: 2, animation: 'fadeInUp 0.5s ease both', animationDelay: '0.2s' }}>
                             <Box sx={{ width: 52, height: 52, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, background: 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(124,58,237,0.1))' }}>
                                 📈
                             </Box>
                             <Box>
                                 <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#B3B3B3', display: 'block', mb: 0.5 }}>
-                                    EQUITY
+                                    INVESTED VALUE
                                 </Typography>
                                 <Typography variant="h5" fontWeight="800" sx={{ color: 'white', fontFamily: '"JetBrains Mono", monospace', fontSize: '26px', letterSpacing: '-0.5px' }}>
                                     {formatCurrency(portfolio.equity)}
                                 </Typography>
-                                <Typography variant="caption" sx={{ color: '#1DB954', fontWeight: 600, fontSize: '11px' }}>
-                                    ▲ {portfolio.positions.length} active position(s)
+                                <Typography variant="caption" sx={{ color: '#a855f7', fontWeight: 600, fontSize: '11px' }}>
+                                    Market value of holdings · {portfolio.positions.length} position(s)
                                 </Typography>
                             </Box>
                         </Box>

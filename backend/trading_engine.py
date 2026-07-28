@@ -1,3 +1,5 @@
+import logging
+import time
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -16,12 +18,69 @@ from models import (
 )
 from constants import INDIAN_STOCKS
 
+# Suppress all yfinance noise including misleading "possibly delisted" warnings
+logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+logging.getLogger("yfinance.base").setLevel(logging.CRITICAL)
+logging.getLogger("yfinance.cache").setLevel(logging.CRITICAL)
+
 DATA_FILE = os.path.join(tempfile.gettempdir(), "trade_history.json")
 
 try:
     yf.set_tz_cache_location(os.path.join(tempfile.gettempdir(), "yf_cache"))
 except Exception as e:
     print(f"Warning: Could not set yfinance cache location: {e}")
+
+
+def _fetch_history(
+    ticker: str,
+    period: str = "3mo",
+    interval: str = "1d",
+    retries: int = 3,
+    delay: float = 1.5,
+) -> Optional[pd.DataFrame]:
+    """
+    Robust wrapper around yf.Ticker.history() with:
+      - Retry logic (handles transient Yahoo Finance Redis/server errors)
+      - Fallback to explicit start/end date range when period-based fetch fails
+      - Silent on all yfinance log noise
+    Returns a DataFrame or None if all attempts fail.
+    """
+    # Map period strings to approximate day counts for the date-range fallback
+    _period_days = {"1d": 1, "5d": 5, "1mo": 31, "3mo": 92, "6mo": 183, "1y": 365, "2y": 730}
+    days = _period_days.get(period, 92)
+
+    attempts = [
+        dict(period=period, interval=interval, raise_errors=False),
+        # Fallback 1: try a slightly longer period (sometimes fixes Redis cache misses)
+        dict(period="6mo", interval=interval, raise_errors=False),
+        # Fallback 2: explicit date range (bypasses Yahoo's period-key caching)
+        dict(
+            start=(datetime.today() - timedelta(days=days + 10)).strftime("%Y-%m-%d"),
+            end=datetime.today().strftime("%Y-%m-%d"),
+            interval=interval,
+            raise_errors=False,
+        ),
+    ]
+
+    last_exc = None
+    for attempt_idx, kwargs in enumerate(attempts):
+        for retry in range(retries):
+            try:
+                t = yf.Ticker(ticker)
+                df = t.history(**kwargs)
+                if df is not None and not df.empty:
+                    return df
+            except Exception as exc:
+                last_exc = exc
+            if retry < retries - 1:
+                time.sleep(delay * (retry + 1))
+        # Small gap between different fallback strategies
+        if attempt_idx < len(attempts) - 1:
+            time.sleep(delay)
+
+    if last_exc:
+        print(f"[_fetch_history] All attempts failed for {ticker}: {last_exc}")
+    return None
 
 def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     high = df['High']
@@ -98,6 +157,7 @@ class TradingEngine:
         self.stop_loss_pct = 0.03                      # Used for position sizing only (not for stop-loss trigger)
         self.trailing_multiplier = 2.0                 # Trailing stop = 2 × ATR14 below peak price
         self.risk_per_trade_pct = 0.02  # 2.0% equity risk per trade
+        self._trade_lock = __import__('threading').Lock()  # Prevents concurrent auto-cycles from double-spending
         self.load_history()
 
     def load_history(self):
@@ -180,8 +240,7 @@ class TradingEngine:
 
     def get_stock_price(self, ticker: str) -> float:
         try:
-            ticker_data = yf.Ticker(ticker)
-            history = ticker_data.history(period="1d", raise_errors=False)
+            history = _fetch_history(ticker, period="1d", retries=2, delay=1.0)
             if history is not None and not history.empty and 'Close' in history:
                 val = float(history['Close'].iloc[-1])
                 return val if not pd.isna(val) and val > 0 else 0.0
@@ -192,8 +251,7 @@ class TradingEngine:
     def get_atr14(self, ticker: str) -> float:
         """Fetches the 14-day Average True Range for a ticker. Used for 2×ATR14 trailing stop."""
         try:
-            ticker_data = yf.Ticker(ticker)
-            history = ticker_data.history(period="3mo", interval="1d", raise_errors=False)
+            history = _fetch_history(ticker, period="3mo", interval="1d")
             if history is not None and len(history) >= 15:
                 atr = calculate_atr(history, period=14)
                 val = float(atr.iloc[-1])
@@ -345,9 +403,8 @@ class TradingEngine:
     def run_strategy(self, ticker: str, quantity: int = 5, use_all_cash: bool = False, execute: bool = True):
         """Runs SMA5 / SMA20 + RSI(14) Confirmation Filter + ATR Volatility Sizing"""
         try:
-            ticker_data = yf.Ticker(ticker)
-            history = ticker_data.history(period="3mo", interval="1d", raise_errors=False)
-            
+            history = _fetch_history(ticker, period="3mo", interval="1d")
+
             if history is None or len(history) < 25:
                 return {"status": "error", "message": f"Not enough historical price data for {ticker}"}
             
@@ -432,10 +489,9 @@ class TradingEngine:
     def run_backtest(self, ticker: str = "RELIANCE.NS", months: int = 12, initial_capital: float = 100000.0) -> BacktestResult:
         """Runs a 6-12 month historical simulation with ATR sizing, RSI filter, and Stop Loss"""
         period_str = "6mo" if months <= 6 else "1y"
-        ticker_data = yf.Ticker(ticker)
-        df = ticker_data.history(period=period_str, interval="1d")
-        
-        if len(df) < 30:
+        df = _fetch_history(ticker, period=period_str, interval="1d")
+
+        if df is None or len(df) < 30:
             raise ValueError(f"Insufficient historical data for {ticker} over {months} months")
             
         df['SMA5'] = df['Close'].rolling(window=5).mean()
@@ -827,6 +883,16 @@ class TradingEngine:
 
     def run_auto_cycle_db(self, db: Session, user_id: Optional[str] = None):
         """Executes a 60-second quantitative auto-trading cycle scanning ALL 40 companies in parallel."""
+        # Lock ensures only one cycle runs at a time — prevents double-spending
+        # when multiple processes or threads hit the same DB simultaneously
+        if not self._trade_lock.acquire(blocking=False):
+            return {"status": "skipped", "message": "Cycle already in progress", "executed_trades": []}
+        try:
+            return self._run_auto_cycle_locked(db, user_id=user_id)
+        finally:
+            self._trade_lock.release()
+
+    def _run_auto_cycle_locked(self, db: Session, user_id: Optional[str] = None):
         from concurrent.futures import ThreadPoolExecutor
         executed_trades = []
 
@@ -957,6 +1023,9 @@ class TradingEngine:
         # Sort ALL BUY candidates by quantitative score (best first)
         buy_candidates.sort(key=lambda x: x["score"], reverse=True)
 
+        # Re-fetch cash from DB to get the most current value after sells
+        db.refresh(portfolio)
+
         # Compute current total portfolio value for concentration limits
         all_held = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
         total_portfolio_value = portfolio.cash + sum(
@@ -1002,6 +1071,14 @@ class TradingEngine:
                 continue
 
             if final_qty > 0 and portfolio.cash >= cost:
+                # --- DB-level atomic cash guard (prevents multi-process overdraft) ---
+                # Lock the portfolio row and re-check cash inside the same transaction.
+                # If another process already spent this cash, we'll see the reduced balance
+                # and skip this buy instead of double-spending.
+                db.refresh(portfolio)  # re-read cash from DB before committing
+                if portfolio.cash < cost:
+                    continue  # Another process already spent this cash — skip
+                # -----------------------------------------------------------------------
                 portfolio.cash -= cost
                 if existing_pos:
                     tot_cost = (existing_pos.quantity * existing_pos.average_price) + cost
@@ -1033,6 +1110,7 @@ class TradingEngine:
                 db.add(trade)
                 db.commit()
                 executed_trades.append({"ticker": ticker, "action": "BUY", "quantity": final_qty, "reason": reason, "score": round(cand["score"], 2)})
+
 
         # 7. Portfolio Rotation: Swap weak HOLD positions for higher-scoring BUY opportunities
         # If a stock we hold now shows "HOLD" (weakening trend) and a much better BUY candidate
@@ -1149,15 +1227,26 @@ class TradingEngine:
 
     async def _run_auto_loop(self):
         """Full 60-second cycle: trailing stop checks + sell signals + buy signals.
-        Runs entirely on the backend so the bot auto-reinvests after profit booking
-        without any user interaction."""
+        Runs in a thread executor so it never blocks FastAPI's async event loop."""
         from database import SessionLocal
+        import concurrent.futures
+        loop = asyncio.get_event_loop()
         print("[AutoBot] Starting full-cycle auto-trading loop (2×ATR14 trailing stop)...")
+
+        def _blocking_cycle():
+            """Synchronous cycle — safe to call from a thread."""
+            db = SessionLocal()
+            try:
+                return self.run_auto_cycle_db(db, user_id=self.auto_user_id)
+            finally:
+                db.close()
+
         while self.is_running:
             if self.auto_user_id:
-                db = SessionLocal()
                 try:
-                    result = self.run_auto_cycle_db(db, user_id=self.auto_user_id)
+                    # run_in_executor offloads the blocking I/O to a thread pool,
+                    # keeping FastAPI's event loop fully responsive during the cycle.
+                    result = await loop.run_in_executor(None, _blocking_cycle)
                     trades = result.get("executed_trades", [])
                     if trades:
                         print(f"[AutoBot] Cycle complete — {len(trades)} trade(s): {[t['ticker'] + ' ' + t['action'] for t in trades]}")
@@ -1166,8 +1255,6 @@ class TradingEngine:
                 except Exception as e:
                     import traceback
                     print(f"[AutoBot] Cycle error: {e}\n{traceback.format_exc()}")
-                finally:
-                    db.close()
             else:
                 print("[AutoBot] No user_id set — waiting for authenticated Start Bot click")
             await asyncio.sleep(60)
