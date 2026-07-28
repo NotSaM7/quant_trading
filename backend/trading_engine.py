@@ -578,6 +578,28 @@ class TradingEngine:
                 db.refresh(portfolio)
         return portfolio
 
+    def _get_consolidated_position(self, db: Session, user_id: str, ticker: str) -> Optional[PositionDB]:
+        positions = db.query(PositionDB).filter(
+            PositionDB.user_id == user_id,
+            PositionDB.ticker == ticker
+        ).all()
+        if not positions:
+            return None
+        if len(positions) == 1:
+            return positions[0]
+
+        main_pos = positions[0]
+        total_qty = sum(p.quantity for p in positions)
+        if total_qty > 0:
+            total_cost = sum(p.quantity * p.average_price for p in positions)
+            main_pos.average_price = total_cost / total_qty
+        main_pos.quantity = total_qty
+
+        for dup in positions[1:]:
+            db.delete(dup)
+        db.commit()
+        return main_pos
+
     def execute_trade_db(self, trade_request: TradeRequest, db: Session, user_id: Optional[str] = None, strategy: str = "MANUAL", reason: Optional[str] = None):
         ticker = trade_request.ticker.upper()
         action = trade_request.action.upper()
@@ -596,7 +618,7 @@ class TradingEngine:
         if action == "BUY":
             if portfolio.cash >= cost:
                 portfolio.cash -= cost
-                existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+                existing_pos = self._get_consolidated_position(db, portfolio.user_id, ticker)
                 if existing_pos:
                     total_cost = (existing_pos.quantity * existing_pos.average_price) + cost
                     existing_pos.quantity += quantity
@@ -631,7 +653,7 @@ class TradingEngine:
                 return {"status": "error", "message": "Insufficient cash balance"}
 
         elif action == "SELL":
-            existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+            existing_pos = self._get_consolidated_position(db, portfolio.user_id, ticker)
             if existing_pos and existing_pos.quantity >= quantity:
                 portfolio.cash += cost
                 existing_pos.quantity -= quantity
@@ -742,7 +764,21 @@ class TradingEngine:
             return PortfolioSummary(cash=100000.0, equity=0.0, total_value=100000.0, positions=[])
 
         cash = portfolio.cash
-        db_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+        raw_positions = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+        by_ticker = {}
+        for p in raw_positions:
+            if p.ticker not in by_ticker:
+                by_ticker[p.ticker] = p
+            else:
+                main_p = by_ticker[p.ticker]
+                tot_q = main_p.quantity + p.quantity
+                if tot_q > 0:
+                    main_p.average_price = ((main_p.quantity * main_p.average_price) + (p.quantity * p.average_price)) / tot_q
+                main_p.quantity = tot_q
+                db.delete(p)
+        if len(raw_positions) != len(by_ticker):
+            db.commit()
+        db_positions = list(by_ticker.values())
         position_list = []
         equity = 0.0
 
@@ -863,7 +899,7 @@ class TradingEngine:
             if res.get("signal") == "SELL":
                 ticker = res.get("ticker")
                 price = res.get("price")
-                existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+                existing_pos = self._get_consolidated_position(db, portfolio.user_id, ticker)
                 if existing_pos and price and price > 0:
                     cost = price * existing_pos.quantity
                     portfolio.cash += cost
@@ -898,7 +934,7 @@ class TradingEngine:
                 rsi = res.get("rsi14", 50)
 
                 # Skip if already at max concentration (25% of portfolio value)
-                existing_holding = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+                existing_holding = self._get_consolidated_position(db, portfolio.user_id, ticker)
                 total_value_est = portfolio.cash + sum(
                     (p.current_price or p.average_price) * p.quantity
                     for p in db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
@@ -943,7 +979,7 @@ class TradingEngine:
             reason = cand.get("reason", "")
 
             # Enforce 25% max concentration per stock
-            existing_pos = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == ticker).first()
+            existing_pos = self._get_consolidated_position(db, portfolio.user_id, ticker)
             existing_value = (existing_pos.quantity * price) if existing_pos else 0
             max_invest = (total_portfolio_value * MAX_CONCENTRATION) - existing_value
             if max_invest <= MIN_POSITION_CASH:
@@ -1056,7 +1092,7 @@ class TradingEngine:
                 buy_ticker = best["ticker"]
                 buy_price = best.get("price")
                 if buy_price and buy_price > 0 and portfolio.cash >= buy_price:
-                    ex_new = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id, PositionDB.ticker == buy_ticker).first()
+                    ex_new = self._get_consolidated_position(db, portfolio.user_id, buy_ticker)
                     ex_val = (ex_new.quantity * buy_price) if ex_new else 0
                     
                     qty_rot_by_cash = int(portfolio.cash // buy_price)
@@ -1072,30 +1108,30 @@ class TradingEngine:
                                 ex_new.quantity += final_rot_qty
                                 ex_new.average_price = tot_rot / ex_new.quantity
                                 ex_new.current_price = buy_price
-                        else:
-                            db.add(PositionDB(
+                            else:
+                                db.add(PositionDB(
+                                    id=str(uuid.uuid4()),
+                                    user_id=portfolio.user_id,
+                                    ticker=buy_ticker,
+                                    quantity=final_rot_qty,
+                                    average_price=buy_price,
+                                    current_price=buy_price,
+                                    peak_price=buy_price
+                                ))
+                            db.add(TradeDB(
                                 id=str(uuid.uuid4()),
                                 user_id=portfolio.user_id,
                                 ticker=buy_ticker,
+                                action="BUY",
                                 quantity=final_rot_qty,
-                                average_price=buy_price,
-                                current_price=buy_price,
-                                peak_price=buy_price
+                                price=buy_price,
+                                strategy="ROTATION",
+                                reason=f"🔄 Rotation into {buy_ticker}: {best.get('reason', '')}"
                             ))
-                        db.add(TradeDB(
-                            id=str(uuid.uuid4()),
-                            user_id=portfolio.user_id,
-                            ticker=buy_ticker,
-                            action="BUY",
-                            quantity=final_rot_qty,
-                            price=buy_price,
-                            strategy="ROTATION",
-                            reason=f"\ud83d\udd04 Rotation into {buy_ticker}: {best.get('reason', '')}"
-                        ))
-                        db.commit()
-                        executed_trades.append({"ticker": buy_ticker, "action": "BUY", "reason": "ROTATION", "score": round(best["score"], 2)})
-                        # Remove from unowned list now that we hold it
-                        unowned_buys = [c for c in unowned_buys if c["ticker"] != buy_ticker]
+                            db.commit()
+                            executed_trades.append({"ticker": buy_ticker, "action": "BUY", "reason": "ROTATION", "score": round(best["score"], 2)})
+                            # Remove from unowned list now that we hold it
+                            unowned_buys = [c for c in unowned_buys if c["ticker"] != buy_ticker]
 
         return {"status": "success", "executed_trades": executed_trades, "count": len(executed_trades)}
 

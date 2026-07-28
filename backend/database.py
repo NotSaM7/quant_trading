@@ -4,7 +4,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Generator
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, ForeignKey, text
+from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, ForeignKey, text, UniqueConstraint
 from sqlalchemy.engine.url import make_url, URL
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
@@ -84,6 +84,7 @@ class PortfolioDB(Base):
 
 class PositionDB(Base):
     __tablename__ = "positions"
+    __table_args__ = (UniqueConstraint('user_id', 'ticker', name='unique_user_ticker'),)
 
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
