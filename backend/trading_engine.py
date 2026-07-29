@@ -997,17 +997,39 @@ class TradingEngine:
 
                 sma5 = res.get("sma5", 0)
                 sma20 = res.get("sma20", 1)
+        # Compute current total portfolio value for adaptive risk & concentration rules
+        all_held = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
+        total_portfolio_value = portfolio.cash + sum(
+            (p.current_price or p.average_price) * p.quantity for p in all_held
+        )
+
+        # Adaptive position sizing parameters:
+        # - Small portfolios (< ₹20,000): allow 50% max concentration per stock and lower min trade threshold (₹300) so small capital (5k, 10k) can trade seamlessly.
+        # - Standard portfolios (>= ₹20,000): enforce 25% max concentration and ₹2,000 min trade threshold.
+        if total_portfolio_value < 20000:
+            MAX_CONCENTRATION = 0.50
+            MIN_POSITION_CASH = min(300.0, max(total_portfolio_value * 0.05, 100.0))
+        else:
+            MAX_CONCENTRATION = 0.25
+            MIN_POSITION_CASH = 2000.0
+
+        # 5. Filter & Rank ALL BUY candidates across all 40 companies
+        buy_candidates = []
+        for res in all_results:
+            if res.get("signal") == "BUY":
+                price = res.get("price")
+                ticker = res.get("ticker")
+                if not price or price <= 0: continue
+
+                sma5 = res.get("sma5", 0)
+                sma20 = res.get("sma20", 1)
                 rsi = res.get("rsi14", 50)
 
-                # Skip if already at max concentration (25% of portfolio value)
+                # Skip if already at max concentration limit for this account size
                 existing_holding = self._get_consolidated_position(db, portfolio.user_id, ticker)
-                total_value_est = portfolio.cash + sum(
-                    (p.current_price or p.average_price) * p.quantity
-                    for p in db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
-                )
                 existing_val = (existing_holding.quantity * price) if existing_holding else 0
-                if existing_val >= total_value_est * 0.25:
-                    continue  # Already at max 25% concentration for this stock
+                if existing_val >= total_portfolio_value * MAX_CONCENTRATION:
+                    continue  # Already at max concentration limit for this stock
 
                 # Calculate quantitative momentum score across all 40 stocks
                 sma20_safe = sma20 if sma20 > 0 else 1.0
@@ -1026,14 +1048,6 @@ class TradingEngine:
         # Re-fetch cash from DB to get the most current value after sells
         db.refresh(portfolio)
 
-        # Compute current total portfolio value for concentration limits
-        all_held = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
-        total_portfolio_value = portfolio.cash + sum(
-            (p.current_price or p.average_price) * p.quantity for p in all_held
-        )
-        MAX_CONCENTRATION = 0.25   # Max 25% of portfolio in any single stock
-        MIN_POSITION_CASH = 2000   # Minimum ₹2,000 to open/add to a position
-
         # 6. Deploy ALL available cash into BUY candidates (no hard stock cap)
         # Buys in score order until cash runs out or no more BUY signals remain
         for cand in buy_candidates:
@@ -1047,12 +1061,12 @@ class TradingEngine:
             atr_qty = cand.get("atr_qty", 5)
             reason = cand.get("reason", "")
 
-            # Enforce 25% max concentration per stock
+            # Enforce adaptive max concentration per stock
             existing_pos = self._get_consolidated_position(db, portfolio.user_id, ticker)
             existing_value = (existing_pos.quantity * price) if existing_pos else 0
             max_invest = (total_portfolio_value * MAX_CONCENTRATION) - existing_value
-            if max_invest <= MIN_POSITION_CASH:
-                continue  # Already near max allocation for this stock
+            if max_invest < price:
+                continue  # Cannot afford even 1 share under concentration limit
 
             qty_by_cash = int(portfolio.cash // price)
             if qty_by_cash <= 0:
