@@ -117,7 +117,6 @@ const Analysis: React.FC = () => {
     const unrealizedPnl = portfolio
         ? portfolio.positions.reduce((sum, p) => sum + (p.pnl || 0), 0)
         : 0;
-    const netTotalPnl = activeMetrics.total_pnl + unrealizedPnl;
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5 }}>
