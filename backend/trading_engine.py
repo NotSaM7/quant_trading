@@ -882,7 +882,7 @@ class TradingEngine:
         )
 
     def run_auto_cycle_db(self, db: Session, user_id: Optional[str] = None):
-        """Executes a 60-second quantitative auto-trading cycle scanning ALL 40 companies in parallel."""
+        """Executes a 60-second quantitative auto-trading cycle scanning ALL 117 companies in parallel."""
         # Lock ensures only one cycle runs at a time — prevents double-spending
         # when multiple processes or threads hit the same DB simultaneously
         if not self._trade_lock.acquire(blocking=False):
@@ -944,7 +944,7 @@ class TradingEngine:
                 db.commit()
                 executed_trades.append({"ticker": pos.ticker, "action": "SELL", "quantity": pos.quantity, "reason": "TRAILING_STOP", "pnl": pnl})
 
-        # 3. Parallel Scan ALL 40 Companies in INDIAN_STOCKS
+        # 3. Parallel Scan ALL 117 Companies in INDIAN_STOCKS
         def scan_stock(stock_item):
             ticker = stock_item["symbol"]
             try:
@@ -987,7 +987,7 @@ class TradingEngine:
                     db.commit()
                     executed_trades.append({"ticker": ticker, "action": "SELL", "quantity": existing_pos.quantity, "reason": res.get("reason")})
 
-        # 5. Filter & Rank ALL BUY candidates across all 40 companies
+        # 5. Filter & Rank ALL BUY candidates across all 117 companies
         buy_candidates = []
         for res in all_results:
             if res.get("signal") == "BUY":
