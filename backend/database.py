@@ -47,9 +47,9 @@ def create_db_engine():
             eng = create_engine(
                 cleaned_url,
                 pool_pre_ping=True,
-                pool_size=3,           # max persistent connections per process
-                max_overflow=2,        # burst connections (total: 5 per process)
-                pool_timeout=10,       # seconds to wait for a free connection
+                pool_size=15,          # max persistent connections per process
+                max_overflow=15,       # burst connections (total: 30 per process)
+                pool_timeout=30,       # seconds to wait for a free connection
                 pool_recycle=1800,     # recycle connections every 30 min
                 connect_args={
                     "connect_timeout": 10,  # fail fast if Supabase is unreachable

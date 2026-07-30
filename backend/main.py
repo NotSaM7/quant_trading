@@ -31,9 +31,6 @@ def _startup_init_db():
 
 _db_init_thread = threading.Thread(target=_startup_init_db, daemon=True)
 _db_init_thread.start()
-_db_init_thread.join(timeout=15)  # give Supabase 15s max at startup
-if _db_init_thread.is_alive():
-    print("[Startup] DB init timed out — continuing without schema sync (will retry on first request)")
 
 # Allow CORS
 app.add_middleware(
@@ -84,7 +81,6 @@ def debug_status():
 @app.post("/api/auth/register", response_model=TokenResponse)
 @app.post("/auth/register", response_model=TokenResponse)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    init_db()
     try:
         existing = db.query(UserDB).filter(UserDB.email == user_data.email.lower().strip()).first()
         if existing:
@@ -122,7 +118,6 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
 @app.post("/api/auth/login", response_model=TokenResponse)
 @app.post("/auth/login", response_model=TokenResponse)
 def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    init_db()
     try:
         user = db.query(UserDB).filter(UserDB.email == credentials.email.lower().strip()).first()
         if not user or not verify_password(credentials.password, user.hashed_password):

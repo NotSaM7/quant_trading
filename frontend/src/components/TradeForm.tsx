@@ -9,7 +9,7 @@ interface TradeFormProps {
 
 const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess, selectedTicker }) => {
     const [ticker, setTicker] = useState('');
-    const [quantity, setQuantity] = useState<number>(1);
+    const [quantity, setQuantity] = useState<number | string>(1);
     const [action, setAction] = useState<'BUY' | 'SELL'>('BUY');
     const [loading, setLoading] = useState(false);
     const [scanLoading, setScanLoading] = useState(false);
@@ -103,7 +103,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess, selectedTicker })
         setScanLoading(true);
         setMessage(null);
         try {
-            const result = await runStrategy(ticker.toUpperCase(), quantity);
+            const qtyNum = Math.max(1, typeof quantity === 'number' ? quantity : (parseInt(quantity, 10) || 1));
+            const result = await runStrategy(ticker.toUpperCase(), qtyNum);
             const msg = `Bot Signal: ${result.signal} — ${result.reason}`;
             setMessage({ type: result.signal === 'HOLD' ? 'info' : (result.signal === 'BUY' ? 'success' : 'error'), text: msg });
             if (result.trade_executed) {
@@ -132,9 +133,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess, selectedTicker })
         setMessage(null);
 
         try {
+            const qtyNum = Math.max(1, typeof quantity === 'number' ? quantity : (parseInt(quantity, 10) || 1));
             const result = await executeTrade({
                 ticker: ticker.toUpperCase(),
-                quantity,
+                quantity: qtyNum,
                 action
             });
             setMessage({ type: 'success', text: result.message });
@@ -330,7 +332,20 @@ const TradeForm: React.FC<TradeFormProps> = ({ onTradeSuccess, selectedTicker })
                         min="1"
                         placeholder="1"
                         value={quantity}
-                        onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                                setQuantity('');
+                            } else {
+                                const num = parseInt(val, 10);
+                                setQuantity(isNaN(num) ? '' : num);
+                            }
+                        }}
+                        onBlur={() => {
+                            if (!quantity || Number(quantity) < 1) {
+                                setQuantity(1);
+                            }
+                        }}
                         required
                         style={{
                             width: '100%',

@@ -21,7 +21,6 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
     const [authWarning, setAuthWarning] = useState<string | null>(null);
     const [selectedTicker, setSelectedTicker] = useState<string>('');
 
-    const activeTabIndex = tabIndex;
 
     // Market Guard Modal state
     const [guardModalOpen, setGuardModalOpen] = useState(false);
@@ -415,13 +414,21 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                                             <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>QTY</TableCell>
                                             <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>AVG BUY PRICE</TableCell>
                                             <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>LIVE PRICE</TableCell>
-                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>P&L</TableCell>
+                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>TODAY'S P&L</TableCell>
+                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>TOTAL P&L</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {portfolio.positions.map((row, index) => {
+                                        {[...portfolio.positions]
+                                            .sort((a, b) => a.ticker.localeCompare(b.ticker))
+                                            .map((row, index) => {
                                             const cleanSymbol = row.ticker.replace('.NS', '');
-                                            const isProfit = row.current_price >= row.average_price;
+                                            const isTotalProfit = row.pnl >= 0;
+                                            const totalPnlPct = row.pnl_pct ?? (row.average_price > 0 ? ((row.current_price - row.average_price) / row.average_price * 100) : 0);
+                                            
+                                            const todayPnlVal = row.todays_pnl ?? 0;
+                                            const isTodayProfit = todayPnlVal >= 0;
+                                            const todayPnlPct = row.todays_pnl_pct ?? 0;
                                             
                                             // Brand color palette per stock matching ui_demo/index.html
                                             const brandColors: Record<string, string> = {
@@ -440,9 +447,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                                                     sx={{
                                                         borderBottom: '1px solid rgba(255,255,255,0.04)',
                                                         cursor: 'pointer',
-                                                        transition: 'all 0.2s',
+                                                        transition: 'all 0.2s ease',
                                                         animation: 'rowFadeIn 0.4s ease both',
-                                                        animationDelay: `${0.1 * (index + 1)}s`,
+                                                        animationDelay: `${Math.min(index * 0.03, 0.4)}s`,
                                                     }}
                                                 >
                                                     <TableCell sx={{ color: '#7C7C8A', fontSize: '12px' }}>{index + 1}</TableCell>
@@ -488,7 +495,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                                                     <TableCell
                                                         align="right"
                                                         sx={{
-                                                            color: isProfit ? '#1DB954' : '#E91429',
+                                                            color: isTotalProfit ? '#1DB954' : '#E91429',
                                                             fontFamily: '"JetBrains Mono", monospace',
                                                             fontWeight: 600,
                                                             fontSize: '12.5px'
@@ -496,22 +503,48 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                                                     >
                                                         {formatCurrency(row.current_price)}
                                                     </TableCell>
+
+                                                    {/* TODAY'S P&L PER STOCK */}
                                                     <TableCell align="right">
                                                         <Box
                                                             sx={{
                                                                 display: 'inline-flex',
-                                                                alignItems: 'center',
+                                                                flexDirection: 'column',
+                                                                alignItems: 'flex-end',
                                                                 px: 1,
                                                                 py: 0.4,
                                                                 borderRadius: '6px',
                                                                 fontSize: '11.5px',
                                                                 fontWeight: 700,
                                                                 fontFamily: '"JetBrains Mono", monospace',
-                                                                bgcolor: isProfit ? 'rgba(29, 185, 84, 0.15)' : 'rgba(233, 20, 41, 0.15)',
-                                                                color: isProfit ? '#1DB954' : '#E91429'
+                                                                bgcolor: isTodayProfit ? 'rgba(29, 185, 84, 0.12)' : 'rgba(233, 20, 41, 0.12)',
+                                                                color: isTodayProfit ? '#1DB954' : '#E91429'
                                                             }}
                                                         >
-                                                            {isProfit ? '+' : ''}{formatCurrency(row.pnl)}
+                                                            <span>{isTodayProfit ? '+' : ''}{formatCurrency(todayPnlVal)}</span>
+                                                            <span style={{ fontSize: '9.5px', opacity: 0.85 }}>({isTodayProfit ? '+' : ''}{todayPnlPct.toFixed(2)}%)</span>
+                                                        </Box>
+                                                    </TableCell>
+
+                                                    {/* TOTAL P&L PER STOCK */}
+                                                    <TableCell align="right">
+                                                        <Box
+                                                            sx={{
+                                                                display: 'inline-flex',
+                                                                flexDirection: 'column',
+                                                                alignItems: 'flex-end',
+                                                                px: 1,
+                                                                py: 0.4,
+                                                                borderRadius: '6px',
+                                                                fontSize: '11.5px',
+                                                                fontWeight: 700,
+                                                                fontFamily: '"JetBrains Mono", monospace',
+                                                                bgcolor: isTotalProfit ? 'rgba(29, 185, 84, 0.15)' : 'rgba(233, 20, 41, 0.15)',
+                                                                color: isTotalProfit ? '#1DB954' : '#E91429'
+                                                            }}
+                                                        >
+                                                            <span>{isTotalProfit ? '+' : ''}{formatCurrency(row.pnl)}</span>
+                                                            <span style={{ fontSize: '9.5px', opacity: 0.85 }}>({isTotalProfit ? '+' : ''}{totalPnlPct.toFixed(2)}%)</span>
                                                         </Box>
                                                     </TableCell>
                                                 </TableRow>
@@ -519,7 +552,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                                         })}
                                         {portfolio.positions.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={6} align="center" sx={{ py: 6, color: '#64748b', borderBottom: 'none' }}>
+                                                <TableCell colSpan={7} align="center" sx={{ py: 6, color: '#64748b', borderBottom: 'none' }}>
                                                     No holdings yet. Execute a trade or start the bot!
                                                 </TableCell>
                                             </TableRow>

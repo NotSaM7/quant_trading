@@ -119,4 +119,24 @@ INDIAN_STOCKS = [
     {"symbol": "POLICYBZR.NS", "name": "PB Fintech (PolicyBazaar)"},
     {"symbol": "DELHIVERY.NS", "name": "Delhivery Limited"},
     {"symbol": "DMART.NS", "name": "Avenue Supermarts (DMart)"},
+
+    # Added Portfolio Tickers
+    {"symbol": "ABLBL.NS", "name": "Aditya Birla Lifestyle Brands"},
+    {"symbol": "BAJAJHFL.NS", "name": "Bajaj Housing Finance"},
+    {"symbol": "BALRAMCHIN.NS", "name": "Balrampur Chini Mills"},
+    {"symbol": "CONCOR.NS", "name": "Container Corporation of India"},
+    {"symbol": "EXIDEIND.NS", "name": "Exide Industries"},
+    {"symbol": "HUBTOWN.NS", "name": "Hubtown Limited"},
+    {"symbol": "HYUNDAI.NS", "name": "Hyundai Motor India"},
+    {"symbol": "LICI.NS", "name": "Life Insurance Corporation of India"},
+    {"symbol": "PARKHOTELS.NS", "name": "Surrendra Park Hotels"},
+    {"symbol": "RELINFRA.NS", "name": "Reliance Infrastructure"},
+    {"symbol": "RPOWER.NS", "name": "Reliance Power"},
+    {"symbol": "SANOFI.NS", "name": "Sanofi India"},
+    {"symbol": "SHAREINDIA.NS", "name": "Share India Securities"},
+    {"symbol": "STEELXIND.NS", "name": "Steel Exchange India"},
+    {"symbol": "TATACAP.NS", "name": "Tata Capital"},
+    {"symbol": "TATACHEM.NS", "name": "Tata Chemicals"},
+    {"symbol": "SBIFUNDS.NS", "name": "SBI Funds Management"},
 ]
+

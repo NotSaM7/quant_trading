@@ -57,6 +57,10 @@ export interface Position {
     average_price: number;
     current_price: number;
     pnl: number;
+    pnl_pct?: number;
+    todays_pnl?: number;
+    todays_pnl_pct?: number;
+    prev_close?: number;
     stop_loss_price?: number;
     peak_price?: number;            // Highest price reached while holding
     trailing_stop_price?: number;   // 2×ATR14 below peak — bot exits if live price drops here
