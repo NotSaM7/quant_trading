@@ -50,9 +50,13 @@ def create_db_engine():
                 pool_size=15,          # max persistent connections per process
                 max_overflow=15,       # burst connections (total: 30 per process)
                 pool_timeout=30,       # seconds to wait for a free connection
-                pool_recycle=1800,     # recycle connections every 30 min
+                pool_recycle=300,      # recycle connections every 5 minutes to prevent cloud firewall drops
                 connect_args={
                     "connect_timeout": 10,  # fail fast if Supabase is unreachable
+                    "keepalives": 1,        # enable TCP keepalives
+                    "keepalives_idle": 30,  # send keepalive packet after 30s idle
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
                 },
             )
             return eng
