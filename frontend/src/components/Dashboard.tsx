@@ -21,6 +21,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
     const [authWarning, setAuthWarning] = useState<string | null>(null);
     const [selectedTicker, setSelectedTicker] = useState<string>('');
 
+    const activeTabIndex = tabIndex;
 
     // Market Guard Modal state
     const [guardModalOpen, setGuardModalOpen] = useState(false);

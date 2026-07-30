@@ -6,13 +6,15 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from sqlalchemy.orm import Session
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import asyncio
 import uuid
 import os
 import tempfile
 from database import UserDB, PortfolioDB, PositionDB, TradeDB
 from models import (
-    PortfolioPosition, PortfolioSummary, TradeRequest,
+    StockData, PortfolioPosition, PortfolioSummary, TradeSignal, TradeRequest,
     TradeHistoryItem, AnalysisMetrics, BacktestTrade, BacktestResult
 )
 from constants import INDIAN_STOCKS
@@ -21,6 +23,8 @@ from constants import INDIAN_STOCKS
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 logging.getLogger("yfinance.base").setLevel(logging.CRITICAL)
 logging.getLogger("yfinance.cache").setLevel(logging.CRITICAL)
+
+DATA_FILE = os.path.join(tempfile.gettempdir(), "trade_history.json")
 
 try:
     yf.set_tz_cache_location(os.path.join(tempfile.gettempdir(), "yf_cache"))
@@ -149,12 +153,38 @@ _CACHE_TTL_SECONDS = 15.0
 
 class TradingEngine:
     def __init__(self, initial_cash: float = 100000.0):
+        self.cash = initial_cash
+        self.positions: Dict[str, PortfolioPosition] = {}
+        self.history: List[TradeHistoryItem] = []
         self.is_running = False
         self.auto_user_id: Optional[str] = None       # Stored when Start Bot is clicked
         self.stop_loss_pct = 0.03                      # Used for position sizing only (not for stop-loss trigger)
         self.trailing_multiplier = 2.0                 # Trailing stop = 2 × ATR14 below peak price
         self.risk_per_trade_pct = 0.02  # 2.0% equity risk per trade
         self._trade_lock = __import__('threading').Lock()  # Prevents concurrent auto-cycles from double-spending
+        self.load_history()
+
+    def load_history(self):
+        try:
+            with open(DATA_FILE, "r") as f:
+                data = json.load(f)
+                valid_items = []
+                for item in data:
+                    try:
+                        valid_items.append(TradeHistoryItem(**item))
+                    except Exception as err:
+                        print(f"Skipping legacy history item: {err}")
+                self.history = valid_items
+        except Exception as e:
+            print(f"Error loading history: {e}")
+            self.history = []
+
+    def save_history(self):
+        try:
+            with open(DATA_FILE, "w") as f:
+                json.dump([item.dict() for item in self.history], f, default=str)
+        except Exception as e:
+            print(f"Error saving history: {e}")
 
     def get_analysis_db(self, db: Session, user_id: Optional[str] = None) -> AnalysisMetrics:
         portfolio = self._get_or_create_portfolio(db, user_id=user_id)
@@ -194,7 +224,23 @@ class TradingEngine:
             trades=trade_items
         )
 
+    def get_analysis(self) -> AnalysisMetrics:
+        total_pnl = sum(item.pnl for item in self.history if item.pnl is not None)
+        total_trades = len(self.history)
+        winning_trades = len([item for item in self.history if item.pnl and item.pnl > 0])
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
 
+        gross_profit = sum(item.pnl for item in self.history if item.pnl and item.pnl > 0)
+        gross_loss = abs(sum(item.pnl for item in self.history if item.pnl and item.pnl < 0))
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0)
+
+        return AnalysisMetrics(
+            total_pnl=total_pnl,
+            win_rate=win_rate,
+            total_trades=total_trades,
+            profit_factor=profit_factor,
+            trades=sorted(self.history, key=lambda x: x.timestamp, reverse=True)
+        )
 
     def get_stock_price(self, ticker: str) -> float:
         try:
@@ -258,7 +304,155 @@ class TradingEngine:
             pass
         return 0.0
 
+    def check_stop_losses(self):
+        """Emergency stop-loss monitor for active positions"""
+        to_sell = []
+        for ticker, pos in list(self.positions.items()):
+            current_price = self.get_stock_price(ticker)
+            if current_price <= 0:
+                continue
+            pos.current_price = current_price
+            pnl_pct = (current_price - pos.average_price) / pos.average_price
+            
+            # Check 3% stop loss or explicit stop loss price
+            is_stop_triggered = pnl_pct <= -self.stop_loss_pct
+            if pos.stop_loss_price and current_price <= pos.stop_loss_price:
+                is_stop_triggered = True
+                
+            if is_stop_triggered:
+                print(f"🚨 STOP LOSS TRIGGERED for {ticker}: Entry={pos.average_price}, Current={current_price}, Loss={pnl_pct*100:.2f}%")
+                to_sell.append((ticker, pos.quantity))
+                
+        for ticker, qty in to_sell:
+            stop_reason = generate_trade_summary(ticker=ticker, action="SELL", qty=qty, price=current_price, sma5=current_price*0.96, sma20=current_price, rsi=28.0)
+            self.execute_trade(TradeRequest(ticker=ticker, action="SELL", quantity=qty), strategy="STOP_LOSS", reason=stop_reason)
 
+    def get_portfolio_summary(self) -> PortfolioSummary:
+        self.check_stop_losses()
+        total_value = self.cash
+        position_list = []
+        today_unrealized_pnl = 0.0
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        for ticker, pos in self.positions.items():
+            fetched_price, prev_close = self.get_stock_price_and_prev_close(ticker)
+            if fetched_price > 0:
+                pos.current_price = fetched_price
+            elif not pos.current_price or pos.current_price <= 0:
+                pos.current_price = pos.average_price
+                prev_close = pos.average_price
+
+            current_price = pos.current_price
+            pos.pnl = (current_price - pos.average_price) * pos.quantity
+            pos.pnl_pct = ((current_price - pos.average_price) / pos.average_price * 100) if pos.average_price > 0 else 0.0
+            
+            base_price = prev_close if prev_close > 0 else pos.average_price
+            pos.prev_close = base_price
+            pos.todays_pnl = (current_price - base_price) * pos.quantity
+            pos.todays_pnl_pct = ((current_price - base_price) / base_price * 100) if base_price > 0 else 0.0
+            
+            total_value += current_price * pos.quantity
+            position_list.append(pos)
+
+            today_unrealized_pnl += pos.todays_pnl
+
+        today_realized_pnl = sum(
+            item.pnl for item in self.history 
+            if item.pnl is not None and item.timestamp >= today_start
+        )
+        todays_pnl = round(today_realized_pnl + today_unrealized_pnl, 2)
+
+        return PortfolioSummary(
+            cash=self.cash,
+            equity=total_value - self.cash,
+            total_value=total_value,
+            todays_pnl=todays_pnl,
+            positions=position_list
+        )
+
+    def execute_trade(self, trade_request: TradeRequest, strategy: str = "MANUAL", reason: Optional[str] = None):
+        print(f"Executing trade: {trade_request} ({strategy})")
+        ticker = trade_request.ticker
+        action = trade_request.action.upper()
+        quantity = trade_request.quantity
+        
+        current_price = self.get_stock_price(ticker)
+        if current_price <= 0:
+             print(f"Error: Could not fetch price for {ticker}")
+             return {"status": "error", "message": "Invalid price"}
+
+        cost = current_price * quantity
+        
+        if action == "BUY":
+            if self.cash >= cost:
+                self.cash -= cost
+                if ticker in self.positions:
+                   pos = self.positions[ticker]
+                   total_cost_existing = pos.quantity * pos.average_price
+                   total_cost_new = total_cost_existing + cost
+                   pos.quantity += quantity
+                   pos.average_price = total_cost_new / pos.quantity
+                else:
+                    stop_price = current_price * (1 - self.stop_loss_pct)
+                    self.positions[ticker] = PortfolioPosition(
+                        ticker=ticker,
+                        quantity=quantity,
+                        average_price=current_price,
+                        current_price=current_price,
+                        pnl=0.0,
+                        stop_loss_price=stop_price
+                    )
+                print(f"Bought {quantity} {ticker} at {current_price}")
+                
+                history_item = TradeHistoryItem(
+                    id=str(uuid.uuid4()),
+                    ticker=ticker,
+                    action="BUY",
+                    quantity=quantity,
+                    price=current_price,
+                    timestamp=datetime.now(),
+                    strategy=strategy,
+                    reason=reason or f"Bullish entry for {ticker}"
+                )
+                self.history.append(history_item)
+                self.save_history()
+
+                return {"status": "success", "message": f"Bought {quantity} {ticker}"}
+            else:
+                 return {"status": "error", "message": "Insufficient funds"}
+
+        elif action == "SELL":
+            if ticker in self.positions and self.positions[ticker].quantity >= quantity:
+                self.cash += cost
+                pos = self.positions[ticker]
+                pos.quantity -= quantity
+                
+                avg_price = pos.average_price 
+                pnl = (current_price - avg_price) * quantity
+                
+                if pos.quantity == 0:
+                    del self.positions[ticker]
+                print(f"Sold {quantity} {ticker} at {current_price}")
+                
+                history_item = TradeHistoryItem(
+                    id=str(uuid.uuid4()),
+                    ticker=ticker,
+                    action="SELL",
+                    quantity=quantity,
+                    price=current_price,
+                    timestamp=datetime.now(),
+                    pnl=pnl,
+                    strategy=strategy,
+                    reason=reason or f"Exit position for {ticker}"
+                )
+                self.history.append(history_item)
+                self.save_history()
+
+                return {"status": "success", "message": f"Sold {quantity} {ticker}"}
+            else:
+                 return {"status": "error", "message": "Insufficient quantity"}
+        
+        return {"status": "error", "message": "Invalid action"}
 
     def run_strategy(self, ticker: str, quantity: int = 5, use_all_cash: bool = False, execute: bool = True):
         """Runs SMA5 / SMA20 + RSI(14) Confirmation Filter + ATR Volatility Sizing"""
@@ -803,6 +997,7 @@ class TradingEngine:
             self._trade_lock.release()
 
     def _run_auto_cycle_locked(self, db: Session, user_id: Optional[str] = None):
+        from concurrent.futures import ThreadPoolExecutor
         executed_trades = []
 
         portfolio = self._get_or_create_portfolio(db, user_id=user_id)
@@ -896,6 +1091,16 @@ class TradingEngine:
                     db.commit()
                     executed_trades.append({"ticker": ticker, "action": "SELL", "quantity": existing_pos.quantity, "reason": res.get("reason")})
 
+        # 5. Filter & Rank ALL BUY candidates across all 117 companies
+        buy_candidates = []
+        for res in all_results:
+            if res.get("signal") == "BUY":
+                price = res.get("price")
+                ticker = res.get("ticker")
+                if not price or price <= 0: continue
+
+                sma5 = res.get("sma5", 0)
+                sma20 = res.get("sma20", 1)
         # Compute current total portfolio value for adaptive risk & concentration rules
         all_held = db.query(PositionDB).filter(PositionDB.user_id == portfolio.user_id).all()
         total_portfolio_value = portfolio.cash + sum(
@@ -912,7 +1117,7 @@ class TradingEngine:
             MAX_CONCENTRATION = 0.25
             MIN_POSITION_CASH = 2000.0
 
-        # 5. Filter & Rank ALL BUY candidates across all 117 companies
+        # 5. Filter & Rank ALL BUY candidates across all 40 companies
         buy_candidates = []
         for res in all_results:
             if res.get("signal") == "BUY":

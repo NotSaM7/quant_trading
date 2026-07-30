@@ -21,6 +21,21 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user: UserResponse
 
+class StockData(BaseModel):
+    ticker: str
+    price: float
+    timestamp: datetime
+
+class TradeSignal(BaseModel):
+    ticker: str
+    action: str  # "BUY", "SELL", "HOLD"
+    price: float
+    timestamp: datetime
+    reason: str
+    atr: Optional[float] = None
+    rsi: Optional[float] = None
+    stop_loss_price: Optional[float] = None
+
 class PortfolioPosition(BaseModel):
     ticker: str
     quantity: int
@@ -66,6 +81,10 @@ class AnalysisMetrics(BaseModel):
     profit_factor: float
     trades: List[TradeHistoryItem]
 
+class BacktestRequest(BaseModel):
+    ticker: str = "RELIANCE.NS"
+    months: int = 12
+    initial_capital: float = 100000.0
 
 class BacktestTrade(BaseModel):
     entry_date: str
