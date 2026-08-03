@@ -1,6 +1,6 @@
 # Quant Trading App 📈 — Premium Trading Dashboard
 
-A modern, high-performance quantitative trading platform built with **React**, **FastAPI**, **SQLAlchemy**, and **Supabase PostgreSQL**. Features a Spotify-inspired dark mode UI, native JWT user authentication, parallel 40-company quantitative strategy execution, ATR volatility position sizing, automated 1-click **Book Profit** capital gains cash-out, real-time **Today's P/L** tracking, stop-loss protection, plain-English retail trade rationales, and 6–12 month historical backtesting.
+A modern, high-performance quantitative trading platform built with **React**, **FastAPI**, **SQLAlchemy**, and **Supabase PostgreSQL**. Features a Spotify-inspired dark mode UI, native JWT user authentication, parallel NSE stocks quantitative strategy execution, ATR volatility position sizing, automated 1-click **Book Profit** capital gains cash-out, real-time **Today's P/L** tracking, stop-loss protection, plain-English retail trade rationales, and 6–12 month historical backtesting.
 
 ![QuantBot Dashboard Overview](./dashboard_main.png)
 ![QuantBot Performance & Analytics View](./analysis_view.png)
@@ -34,9 +34,9 @@ A modern, high-performance quantitative trading platform built with **React**, *
 
 ---
 
-### ⚡ Parallel 40-Company Quantitative Strategy Engine (`SMA5 / SMA20 + RSI14 + ATR14`)
-- **Parallel Multi-Threaded Scan**: Scans **ALL 40 top Indian companies** (`INDIAN_STOCKS`) in parallel using a 10-worker thread pool in ~1.8 seconds.
-- **Quantitative Momentum Ranking**: Computes $SMA_5$, $SMA_{20}$, $RSI_{14}$, and $ATR_{14}$ for every company and ranks all 40 stocks by Quantitative Momentum Score:
+### ⚡ Parallel NSE Stocks Quantitative Strategy Engine (`SMA5 / SMA20 + RSI14 + ATR14`)
+- **Parallel Multi-Threaded Scan**: Scans **NSE stocks** (`INDIAN_STOCKS`) in parallel using a 10-worker thread pool in ~1.8 seconds.
+- **Quantitative Momentum Ranking**: Computes $SMA_5$, $SMA_{20}$, $RSI_{14}$, and $ATR_{14}$ for every company and ranks NSE stocks by Quantitative Momentum Score:
   $$\text{Score} = \frac{SMA_5 - SMA_{20}}{SMA_{20}} \times 100 + (RSI_{14} - 50)$$
 - **Multi-Stock Purchase Diversification**: Allocates capital across the top 4 candidate companies rather than focusing on a single stock.
 - **Automated Stop-Loss Protection**: Emergency monitor checks active positions during every pass. Positions incurring a drawdown of $\ge 3.0\%$ trigger an automated `STOP_LOSS` market sell.
