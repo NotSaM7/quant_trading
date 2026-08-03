@@ -362,10 +362,13 @@ class TradingEngine:
         )
         todays_pnl = round(today_realized_pnl + today_unrealized_pnl, 2)
 
+        invested_cost = sum(p.quantity * p.average_price for p in self.positions.values())
+
         return PortfolioSummary(
             cash=self.cash,
             equity=total_value - self.cash,
             total_value=total_value,
+            invested_cost=round(invested_cost, 2),
             todays_pnl=todays_pnl,
             positions=position_list
         )
@@ -840,6 +843,8 @@ class TradingEngine:
                 except Exception as err_sell:
                     print(f"Error selling position {ticker}: {err_sell}")
 
+            db.commit()
+
             count = len(profit_positions_sold)
             if count == 0:
                 return {
@@ -968,6 +973,7 @@ class TradingEngine:
 
         position_list.sort(key=lambda x: x.ticker)
 
+        invested_cost = sum(pos.average_price * pos.quantity for pos in db_positions)
         total_val = cash + equity
         db_trades_today = db.query(TradeDB).filter(
             TradeDB.user_id == portfolio.user_id,
@@ -981,6 +987,7 @@ class TradingEngine:
             cash=cash,
             equity=equity,
             total_value=total_val,
+            invested_cost=round(invested_cost, 2),
             todays_pnl=todays_pnl,
             positions=position_list
         )

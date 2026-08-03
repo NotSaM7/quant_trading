@@ -55,6 +55,7 @@ class PortfolioSummary(BaseModel):
     cash: float
     equity: float
     total_value: float
+    invested_cost: float = 0.0
     todays_pnl: float = 0.0
     positions: List[PortfolioPosition]
 

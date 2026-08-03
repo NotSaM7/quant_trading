@@ -70,6 +70,7 @@ export interface PortfolioSummary {
     cash: number;
     equity: number;
     total_value: number;
+    invested_cost?: number;
     todays_pnl?: number;
     positions: Position[];
 }
