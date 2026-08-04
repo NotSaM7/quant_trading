@@ -36,7 +36,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                 sx={{
                     position: 'sticky',
                     top: 0,
-                    height: '64px',
                     width: '100%',
                     zIndex: 1100,
                     background: 'rgba(18, 18, 18, 0.85)',
@@ -44,6 +43,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
+                    flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                    columnGap: { xs: 2, sm: 0 },
+                    rowGap: { xs: 1, sm: 0 },
+                    minHeight: '64px',
+                    height: { xs: 'auto', sm: '64px' },
+                    py: { xs: 1, sm: 0 },
                     px: { xs: 2, sm: 4 },
                     borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
                 }}
@@ -66,7 +71,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                     >
                         📊
                     </Box>
-                    <Typography variant="h6" fontWeight="800" sx={{ color: 'white', letterSpacing: '-0.5px', fontFamily: '"Outfit", sans-serif' }}>
+                    <Typography variant="h6" fontWeight="800" sx={{ color: 'white', letterSpacing: '-0.5px', fontFamily: '"Outfit", sans-serif', display: { xs: 'none', sm: 'block' } }}>
                         QuantBot
                     </Typography>
                 </Box>
@@ -76,10 +81,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                     <Button
                         onClick={() => onTabChange && onTabChange(0)}
                         sx={{
-                            px: 2.8,
-                            py: 0.9,
+                            px: { xs: 1.5, sm: 2.8 },
+                            py: { xs: 0.7, sm: 0.9 },
                             borderRadius: '50px',
-                            fontSize: '13px',
+                            fontSize: { xs: '12px', sm: '13px' },
                             fontWeight: activeTab === 0 ? 800 : 700,
                             fontFamily: '"Outfit", sans-serif',
                             textTransform: 'none',
@@ -95,10 +100,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                     <Button
                         onClick={() => onTabChange && onTabChange(1)}
                         sx={{
-                            px: 2.8,
-                            py: 0.9,
+                            px: { xs: 1.5, sm: 2.8 },
+                            py: { xs: 0.7, sm: 0.9 },
                             borderRadius: '50px',
-                            fontSize: '13px',
+                            fontSize: { xs: '12px', sm: '13px' },
                             fontWeight: activeTab === 1 ? 800 : 700,
                             fontFamily: '"Outfit", sans-serif',
                             textTransform: 'none',
@@ -154,7 +159,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                                     color: '#B3B3B3',
                                     borderColor: 'rgba(255, 255, 255, 0.2)',
                                     borderRadius: 50,
-                                    px: 2,
+                                    px: { xs: 1.25, sm: 2 },
                                     fontSize: '12px',
                                     fontWeight: 700,
                                     textTransform: 'none',
@@ -173,7 +178,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                                 size="small"
                                 onClick={() => openAuthModal('login')}
                                 startIcon={<PersonIcon fontSize="small" />}
-                                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 50, px: 2 }}
+                                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.2)', borderRadius: 50, px: { xs: 1.25, sm: 2 } }}
                             >
                                 Sign In
                             </Button>
@@ -183,7 +188,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                                 onClick={() => openAuthModal('register')}
                                 sx={{
                                     borderRadius: 50,
-                                    px: 2,
+                                    px: { xs: 1.25, sm: 2 },
                                     fontWeight: 800,
                                     background: '#1DB954',
                                     color: '#000',

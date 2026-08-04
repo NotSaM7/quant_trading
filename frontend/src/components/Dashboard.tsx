@@ -212,13 +212,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                 </Box>
 
                 {/* Right Top Controls: Bot Status Pill + Stop Bot Button (Exact Demo UI) */}
-                <Box display="flex" alignItems="center" gap={1.5}>
+                <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap" justifyContent="flex-end" width={{ xs: '100%', sm: 'auto' }}>
                     <Box
                         sx={{
                             display: 'flex',
                             alignItems: 'center',
                             gap: 1,
-                            px: 2,
+                            px: { xs: 1.5, sm: 2 },
                             py: 0.8,
                             borderRadius: '50px',
                             fontSize: '12px',
@@ -248,7 +248,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                         onClick={toggleAutoTrade}
                         startIcon={autoRunning ? <StopIcon /> : <PlayArrowIcon />}
                         sx={{
-                            px: 3,
+                            px: { xs: 2, sm: 3 },
                             py: 1,
                             borderRadius: '50px',
                             fontWeight: 800,
@@ -274,7 +274,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                         variant="contained"
                         onClick={handleBookProfitClick}
                         sx={{
-                            px: 3,
+                            px: { xs: 2, sm: 3 },
                             py: 1,
                             borderRadius: '50px',
                             fontWeight: 800,
@@ -407,13 +407,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                             </Box>
 
                             <Box sx={{ overflowX: 'auto', width: '100%' }}>
-                                <Table size="medium">
+                                <Table size="medium" sx={{ '& .MuiTableCell-root': { px: { xs: 1, sm: 2 } } }}>
                                     <TableHead>
                                         <TableRow sx={{ background: 'rgba(0, 0, 0, 0.4)' }}>
-                                            <TableCell sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>#</TableCell>
+                                            <TableCell sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none', display: { xs: 'none', sm: 'table-cell' } }}>#</TableCell>
                                             <TableCell sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>TICKER</TableCell>
                                             <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>QTY</TableCell>
-                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>AVG BUY PRICE</TableCell>
+                                            <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none', display: { xs: 'none', sm: 'table-cell' } }}>AVG BUY PRICE</TableCell>
                                             <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>LIVE PRICE</TableCell>
                                             <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>TODAY'S P&L</TableCell>
                                             <TableCell align="right" sx={{ color: '#B3B3B3', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, borderBottom: 'none' }}>TOTAL P&L</TableCell>
@@ -453,7 +453,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                                                         animationDelay: `${Math.min(index * 0.03, 0.4)}s`,
                                                     }}
                                                 >
-                                                    <TableCell sx={{ color: '#7C7C8A', fontSize: '12px' }}>{index + 1}</TableCell>
+                                                    <TableCell sx={{ color: '#7C7C8A', fontSize: '12px', display: { xs: 'none', sm: 'table-cell' } }}>{index + 1}</TableCell>
                                                     <TableCell>
                                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                                             <Box
@@ -490,7 +490,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                                                     <TableCell align="right" sx={{ color: '#7C7C8A', fontFamily: '"JetBrains Mono", monospace', fontSize: '12.5px' }}>
                                                         {row.quantity}
                                                     </TableCell>
-                                                    <TableCell align="right" sx={{ color: '#7C7C8A', fontFamily: '"JetBrains Mono", monospace', fontSize: '12.5px' }}>
+                                                    <TableCell align="right" sx={{ color: '#7C7C8A', fontFamily: '"JetBrains Mono", monospace', fontSize: '12.5px', display: { xs: 'none', sm: 'table-cell' } }}>
                                                         {formatCurrency(row.average_price)}
                                                     </TableCell>
                                                     <TableCell
@@ -581,7 +581,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                 onClose={() => setAuthWarning(null)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
-                <Alert severity="warning" onClose={() => setAuthWarning(null)} sx={{ width: '100%', minWidth: '320px', bgcolor: '#0d1117', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Alert severity="warning" onClose={() => setAuthWarning(null)} sx={{ width: '100%', minWidth: { xs: 'auto', sm: '320px' }, mx: { xs: 2, sm: 0 }, bgcolor: '#0d1117', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}>
                     {authWarning}
                 </Alert>
             </Snackbar>
@@ -592,7 +592,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
                 onClose={() => setToastMessage(null)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             >
-                <Alert severity="success" onClose={() => setToastMessage(null)} sx={{ width: '100%', minWidth: '320px', bgcolor: '#121212', color: '#1ed760', border: '1px solid rgba(29, 185, 84, 0.4)', fontFamily: '"Outfit", sans-serif', fontWeight: 600 }}>
+                <Alert severity="success" onClose={() => setToastMessage(null)} sx={{ width: '100%', minWidth: { xs: 'auto', sm: '320px' }, mx: { xs: 2, sm: 0 }, bgcolor: '#121212', color: '#1ed760', border: '1px solid rgba(29, 185, 84, 0.4)', fontFamily: '"Outfit", sans-serif', fontWeight: 600 }}>
                     {toastMessage}
                 </Alert>
             </Snackbar>

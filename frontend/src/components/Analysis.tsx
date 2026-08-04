@@ -463,15 +463,15 @@ const Analysis: React.FC = () => {
                 </Box>
 
                 <Box sx={{ overflowX: 'auto', width: '100%' }}>
-                    <Table size="small" sx={{ minWidth: 500 }}>
+                    <Table size="small" sx={{ minWidth: { xs: 0, md: 500 }, '& .MuiTableCell-root': { px: { xs: 1, sm: 2 } } }}>
                         <TableHead>
                             <TableRow sx={{ background: 'rgba(0,0,0,0.2)' }}>
                                 <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>DATE &amp; TIME</TableCell>
                                 <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>TICKER</TableCell>
                                 <TableCell sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>ACTION</TableCell>
                                 <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>QTY</TableCell>
-                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>PRICE</TableCell>
-                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>STRATEGY</TableCell>
+                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, display: { xs: 'none', sm: 'table-cell' } }}>PRICE</TableCell>
+                                <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5, display: { xs: 'none', sm: 'table-cell' } }}>STRATEGY</TableCell>
                                 <TableCell align="right" sx={{ color: '#64748b', fontSize: '10px', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', py: 1.5 }}>P&amp;L</TableCell>
                             </TableRow>
                         </TableHead>
@@ -480,7 +480,7 @@ const Analysis: React.FC = () => {
                                 const stratColor = trade.strategy === 'ROTATION' ? '#a855f7' : (trade.strategy === 'STOP_LOSS' || trade.strategy === 'TRAILING_STOP' ? '#f59e0b' : '#00d4aa');
                                 return (
                                     <TableRow key={trade.id} sx={{ borderBottom: '1px solid rgba(255,255,255,0.04)', '&:hover': { bgcolor: 'rgba(0,212,170,0.04)' } }}>
-                                        <TableCell sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
+                                        <TableCell sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '11.5px', whiteSpace: { xs: 'normal', md: 'nowrap' } }}>
                                             {formatDateTime(trade.timestamp)}
                                         </TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 700, fontFamily: '"Outfit", sans-serif', fontSize: '13px' }}>
@@ -506,10 +506,10 @@ const Analysis: React.FC = () => {
                                         <TableCell align="right" sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>
                                             {trade.quantity}
                                         </TableCell>
-                                        <TableCell align="right" sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px' }}>
+                                        <TableCell align="right" sx={{ color: '#94a3b8', fontFamily: '"JetBrains Mono", monospace', fontSize: '12px', display: { xs: 'none', sm: 'table-cell' } }}>
                                             {formatCurrency(trade.price)}
                                         </TableCell>
-                                        <TableCell align="right">
+                                        <TableCell align="right" sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                                             <span style={{ fontSize: '10px', fontWeight: 700, color: stratColor, backgroundColor: `${stratColor}18`, padding: '2px 7px', borderRadius: '5px', letterSpacing: '0.3px' }}>
                                                 {trade.strategy || 'SMA+RSI'}
                                             </span>

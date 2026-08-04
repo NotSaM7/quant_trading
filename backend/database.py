@@ -13,36 +13,24 @@ load_dotenv()
 RAW_DB_URL = os.getenv("DATABASE_URL", "")
 
 def sanitize_url(raw: str) -> str:
-    if not raw:
-        return ""
-    # Strip literal \n, \r, escaped \\n, \\r, and trailing whitespace
-    clean = raw.replace("\\n", "").replace("\\r", "").replace("\n", "").replace("\r", "").strip()
-    return re.sub(r'[\r\n\t ]+', '', clean)
+    return re.sub(r'[\r\n\t ]+', '', raw.replace("\\n", "").replace("\\r", "").strip()) if raw else ""
 
 DATABASE_URL = sanitize_url(RAW_DB_URL)
 
 def create_db_engine():
     if DATABASE_URL:
         try:
-            clean_url = sanitize_url(DATABASE_URL)
-            parsed = make_url(clean_url)
-            driver = "postgresql"
-            if parsed.drivername.startswith("postgres"):
-                driver = "postgresql"
-
-            db_name = "postgres"
-            user_name = sanitize_url(parsed.username) if parsed.username else None
-            host_name = sanitize_url(parsed.host) if parsed.host else None
-
+            parsed = make_url(DATABASE_URL)
             cleaned_url = URL.create(
-                drivername=driver,
-                username=user_name,
+                drivername="postgresql",
+                username=parsed.username,
                 password=parsed.password,
-                host=host_name,
+                host=parsed.host,
                 port=parsed.port,
-                database=db_name,
+                database="postgres",
                 query=parsed.query
             )
+
 
             eng = create_engine(
                 cleaned_url,

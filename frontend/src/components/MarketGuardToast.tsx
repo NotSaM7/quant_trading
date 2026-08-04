@@ -86,7 +86,7 @@ export const MarketGuardToast: React.FC<MarketGuardToastProps> = ({ open, status
       </Typography>
 
       {/* Hours Grid */}
-      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mb: 2, flexWrap: 'wrap' }}>
         <Box sx={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', p: '8px 14px', textAlign: 'center' }}>
           <Typography variant="caption" sx={{ color: '#B3B3B3', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase', fontSize: '10px', display: 'block', mb: 0.3 }}>
             TRADING DAYS

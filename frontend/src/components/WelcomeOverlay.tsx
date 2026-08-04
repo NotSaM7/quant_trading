@@ -87,8 +87,11 @@ export const WelcomeOverlay: React.FC<WelcomeOverlayProps> = ({ user, isAuthenti
           sx={{
             display: 'inline-flex',
             alignItems: 'center',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            textAlign: 'center',
             gap: 1,
-            px: 2.2,
+            px: { xs: 1.5, sm: 2.2 },
             py: 0.9,
             borderRadius: '50px',
             fontSize: '12px',

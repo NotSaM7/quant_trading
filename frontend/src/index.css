@@ -31,6 +31,10 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   background-color: var(--bg);
@@ -199,6 +203,8 @@ tr:hover .row-hint {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow-y: auto;
+  padding: 16px 0;
   transition: opacity 0.5s ease;
 }
 
@@ -206,7 +212,7 @@ tr:hover .row-hint {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
   border: 1px solid rgba(29, 185, 84, 0.3);
   border-radius: 24px;
-  padding: 44px 52px;
+  padding: clamp(28px, 7vw, 52px);
   max-width: 520px;
   width: 90%;
   text-align: center;
@@ -251,7 +257,7 @@ tr:hover .row-hint {
   z-index: 8000;
   text-align: center;
   backdrop-filter: blur(20px);
-  min-width: 340px;
+  min-width: min(340px, 90vw);
   max-width: 90vw;
   box-shadow: 0 20px 60px rgba(0,0,0,0.8);
   animation: toastPop 0.35s cubic-bezier(0.34, 1.2, 0.64, 1) both;
@@ -260,4 +266,17 @@ tr:hover .row-hint {
 @keyframes toastPop {
   from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── Mobile: keep the page vertical-only and compact rows ── */
+@media (max-width: 640px) {
+  .row-hint {
+    display: none;
+  }
+  .mkt-closed-toast-container {
+    top: 16px;
+    padding: 18px 16px;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+  }
 }
