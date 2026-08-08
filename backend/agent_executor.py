@@ -118,7 +118,7 @@ def run_research(ticker: str, verbose: bool = True) -> dict:
                                 })
 
                                 if verbose:
-                                    print(f"\n🔧 TOOL CALL [{step_num}]: {tc['name']}")
+                                    print(f"\n[TOOL CALL {step_num}]: {tc['name']}")
 
                         elif msg.type == "tool":
                             tool_name = getattr(msg, "name", "tool")
@@ -166,7 +166,7 @@ def run_research(ticker: str, verbose: bool = True) -> dict:
             if any(err in error_str for err in ["429", "503", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "high demand"]):
                 wait_time = 10 * (attempt + 1)
                 if verbose:
-                    print(f"\n⏳ Gemini server busy. Retrying in {wait_time}s...")
+                    print(f"\n[RETRY] Gemini server busy. Retrying in {wait_time}s...")
                 _time.sleep(wait_time)
                 agent = create_research_agent()
             else:
