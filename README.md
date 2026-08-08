@@ -65,6 +65,85 @@ A modern, high-performance quantitative trading platform built with **React**, *
 
 ---
 
+## 🤖 Autonomous Stock Research Agent (Agentic AI)
+
+An agentic AI feature built into the platform: given any Indian stock ticker (e.g., `RELIANCE.NS`, `TCS.NS`, `INFY.NS`), an LLM dynamically plans its research strategy, executes 5 specialized tools in sequence, and generates a BUY/HOLD/SELL recommendation backed by a transparent reasoning trace with inline source citations.
+
+---
+
+### 🧠 Why Agent Architecture vs. Fixed Pipeline?
+
+The app's original trading scanner follows a **fixed pipeline** (`scan → compute SMA/RSI/ATR → rank momentum`). While efficient for bulk screening, fixed pipelines suffer from two major limitations in deep qualitative & quantitative research:
+
+1. **Inflexible Execution Paths**: A fixed pipeline executes the exact same steps regardless of intermediate data. If news is sparse or data is missing, fixed pipelines break or generate uniform fallback outputs.
+2. **Inability to Synthesize Mixed Signals**: Quantitative indicators (e.g., bullish $SMA_5 > SMA_{20}$ crossover) can directly contradict qualitative news (e.g., geopolitical refinery risk) or historical backtest reality (e.g., 20% win rate). An **Agent Reasoning Layer** evaluates conflicting signals dynamically before making a recommendation.
+
+---
+
+### 🛠️ Why LangChain (ReAct Pattern) over Custom Reasoning Loops?
+
+We selected **LangChain's ReAct (Reasoning + Acting)** framework (`create_react_agent`) over a custom `while` loop for several production reasons:
+
+- **Structured `Thought → Action → Observation` Cycles**: Standardized message objects (`AIMessage`, `ToolMessage`) keep prompt context clean without manual state tracking.
+- **Native Tool Binding**: `@tool` decorators enforce Pydantic type safety, schema generation, and argument parsing automatically.
+- **Graph Stream Support**: Enables real-time step-by-step streaming (`agent.stream()`) so the UI can display live tool execution progress as it happens.
+- **Built-in Error Recovery**: Gracefully catches tool execution exceptions, returning structured error JSON to the model rather than crashing the application server.
+
+---
+
+### 🧰 Agent Tool Inventory
+
+| Tool | Source Logic | Purpose & Usage in Reasoning |
+|---|---|---|
+| `get_price(ticker)` | `TradingEngine.get_stock_price()` | Establishes current live closing price in INR (₹). Always called first to set baseline valuation. |
+| `compute_indicators(ticker)` | `TradingEngine.run_strategy(execute=False)` | Computes $SMA_5$, $SMA_{20}$, $RSI_{14}$, $ATR_{14}$, short-term trend crossover, and technical BUY/HOLD/SELL signal. |
+| `get_momentum_score(ticker)` | Parallel 20-Stock Scan | Computes momentum score and ranks stock against top benchmark peers (percentile rank). |
+| `get_recent_news(ticker)` | `yfinance .news` | Fetches up to 10 live news headlines/summaries to assess qualitative market sentiment. |
+| `run_backtest(ticker, months)` | `TradingEngine.run_backtest()` | Runs 12-month historical strategy backtest to measure Sharpe Ratio, Max Drawdown, and Win Rate %. |
+
+---
+
+### 📋 Full Worked Reasoning Example (`RELIANCE.NS`)
+
+```markdown
+**RECOMMENDATION: HOLD**
+**CONFIDENCE: MEDIUM**
+**TICKER: RELIANCE.NS**
+**CURRENT PRICE: ₹1,334.80 [Source: get_price]**
+
+---
+
+**REASONING CHAIN:**
+
+1. **Price & Trend Analysis**
+   - Current price of RELIANCE.NS is ₹1,334.80 [Source: get_price].
+   - SMA5 (₹1,309.94) sits 1.0% above SMA20 (₹1,297.44) [Source: compute_indicators].
+   - Reflects an early-stage short-term bullish crossover [Source: compute_indicators].
+
+2. **Technical Indicators**
+   - RSI14 is 52.71 (neutral buying momentum) [Source: compute_indicators].
+   - ATR14 is ₹22.89 (1.72% daily price volatility) [Source: compute_indicators].
+
+3. **Momentum Ranking**
+   - Momentum score of 3.67 places RELIANCE at Rank #14 out of 20 benchmark stocks (30th percentile) [Source: get_momentum_score].
+   - Peer leaders like HCLTECH (34.99) and LT (29.52) show stronger relative momentum.
+
+4. **News & Sentiment**
+   - Promoters increased stake following stock slump, Q1 earnings beat expectations [Source: get_recent_news].
+   - Partnership with Kim Kardashian's SKIMS & diesel exports to Europe [Source: get_recent_news].
+
+5. **Backtest Performance**
+   - 12-month backtest return: -6.78%, Sharpe Ratio: -0.88, Win Rate: 20% across 10 trades [Source: run_backtest].
+   - Highlights high susceptibility to false breakout signals during sideways phases.
+
+---
+
+**SUMMARY:**
+RELIANCE.NS displays short-term technical strength [Source: compute_indicators], but is offset by weak relative ranking (rank 14/20) [Source: get_momentum_score] and a poor 12-month backtest record (-6.78% return, 20% win rate) [Source: run_backtest]. A **HOLD** stance is recommended.
+```
+
+---
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: React, TypeScript, Material UI, Recharts, Vite, Axios

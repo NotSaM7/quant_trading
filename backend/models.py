@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class UserCreate(BaseModel):
@@ -115,4 +115,25 @@ class BacktestResult(BaseModel):
     sharpe_ratio: float
     trades: List[BacktestTrade]
     equity_curve: List[EquityCurvePoint]
+
+class AgentResearchStep(BaseModel):
+    step_number: int
+    tool: str
+    arguments: Dict[str, Any]
+    result: str
+    status: str = "success"
+
+class AgentResearchRequest(BaseModel):
+    ticker: str
+
+class AgentResearchResponse(BaseModel):
+    id: str
+    user_id: Optional[str] = None
+    ticker: str
+    recommendation: str  # BUY / HOLD / SELL
+    confidence: str      # HIGH / MEDIUM / LOW
+    summary: str
+    trace: List[AgentResearchStep]
+    timestamp: datetime
+
 

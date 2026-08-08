@@ -205,4 +205,35 @@ export const runBacktest = async (ticker: string = 'RELIANCE.NS', months: number
     return response.data;
 };
 
+export interface AgentResearchStep {
+    step_number: number;
+    tool: string;
+    arguments: Record<string, any>;
+    result: string;
+    status: string;
+}
+
+export interface AgentResearchResponse {
+    id: string;
+    user_id?: string;
+    ticker: string;
+    recommendation: "BUY" | "HOLD" | "SELL";
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    summary: string;
+    trace: AgentResearchStep[];
+    timestamp: string;
+}
+
+export const runAgentResearch = async (ticker: string): Promise<AgentResearchResponse> => {
+    const response = await api.post<AgentResearchResponse>('/agent/research', { ticker });
+    return response.data;
+};
+
+export const getAgentResearchHistory = async (ticker?: string): Promise<AgentResearchResponse[]> => {
+    const response = await api.get<AgentResearchResponse[]>('/agent/research/history', {
+        params: { ticker }
+    });
+    return response.data;
+};
+
 export default api;

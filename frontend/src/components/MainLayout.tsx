@@ -116,6 +116,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab = 0, onTabC
                     >
                         Analysis
                     </Button>
+                    <Button
+                        onClick={() => onTabChange && onTabChange(2)}
+                        sx={{
+                            px: { xs: 1.5, sm: 2.8 },
+                            py: { xs: 0.7, sm: 0.9 },
+                            borderRadius: '50px',
+                            fontSize: { xs: '12px', sm: '13px' },
+                            fontWeight: activeTab === 2 ? 800 : 700,
+                            fontFamily: '"Outfit", sans-serif',
+                            textTransform: 'none',
+                            color: activeTab === 2 ? '#000000' : '#FFFFFF',
+                            bgcolor: activeTab === 2 ? '#FFFFFF' : '#2a2a2a',
+                            boxShadow: activeTab === 2 ? '0 4px 16px rgba(255,255,255,0.2)' : 'none',
+                            transition: 'all 0.2s ease',
+                            '&:hover': { bgcolor: activeTab === 2 ? '#FFFFFF' : '#333333' }
+                        }}
+                    >
+                        AI Agent 🧠
+                    </Button>
                 </Box>
 
                 {/* Right Side: Auth User Controls */}

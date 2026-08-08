@@ -74,6 +74,7 @@ class UserDB(Base):
     portfolios = relationship("PortfolioDB", back_populates="user", cascade="all, delete-orphan")
     positions = relationship("PositionDB", back_populates="user", cascade="all, delete-orphan")
     trades = relationship("TradeDB", back_populates="user", cascade="all, delete-orphan")
+    research_logs = relationship("AgentResearchLogDB", back_populates="user", cascade="all, delete-orphan")
 
 class PortfolioDB(Base):
     __tablename__ = "portfolios"
@@ -114,6 +115,20 @@ class TradeDB(Base):
     reason = Column(String, nullable=True)
 
     user = relationship("UserDB", back_populates="trades")
+
+class AgentResearchLogDB(Base):
+    __tablename__ = "agent_research_logs"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)  # Nullable for guest research
+    ticker = Column(String, nullable=False, index=True)
+    recommendation = Column(String, nullable=False)  # BUY / HOLD / SELL
+    confidence = Column(String, default="MEDIUM")     # HIGH / MEDIUM / LOW
+    summary = Column(String, nullable=False)          # Full final text response
+    trace_json = Column(String, nullable=False)       # JSON string of structured tool steps
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    user = relationship("UserDB", back_populates="research_logs")
 
 def init_db():
     try:

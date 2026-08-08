@@ -9,14 +9,16 @@ from sqlalchemy.orm import Session
 # Fix for Vercel: Add current directory to sys.path so imports work
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from database import init_db, get_db, UserDB, PortfolioDB, engine as db_engine
+from database import init_db, get_db, UserDB, PortfolioDB, AgentResearchLogDB, engine as db_engine
 from security import hash_password, verify_password, create_access_token, decode_access_token
 from models import (
     UserCreate, UserLogin, UserResponse, TokenResponse,
-    PortfolioSummary, TradeRequest, AnalysisMetrics, BacktestResult
+    PortfolioSummary, TradeRequest, AnalysisMetrics, BacktestResult,
+    AgentResearchRequest, AgentResearchResponse, AgentResearchStep
 )
 from constants import INDIAN_STOCKS
 from trading_engine import TradingEngine
+from agent_executor import run_research, save_agent_research_log_db
 
 app = FastAPI(title="Quant Trading App")
 
@@ -238,4 +240,84 @@ def book_profit(
 ):
     user_id = current_user.id if current_user else None
     return trading_engine_instance.book_profit_db(db, user_id=user_id)
+
+
+# --- AUTONOMOUS AGENT RESEARCH ENDPOINTS ---
+
+@app.post("/api/agent/research", response_model=AgentResearchResponse)
+@app.post("/agent/research", response_model=AgentResearchResponse)
+def research_stock(
+    request: AgentResearchRequest,
+    db: Session = Depends(get_db),
+    current_user: Optional[UserResponse] = Depends(get_current_user_optional)
+):
+    import json
+    ticker = request.ticker.strip().upper()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Ticker symbol is required")
+
+    if not (ticker.endswith(".NS") or ticker.endswith(".BO")):
+        ticker = f"{ticker}.NS"
+
+    try:
+        user_id = current_user.id if current_user else None
+
+        research_result = run_research(ticker=ticker, verbose=True)
+        log_record = save_agent_research_log_db(db=db, user_id=user_id, research_result=research_result)
+        trace_data = json.loads(log_record.trace_json) if log_record.trace_json else []
+
+        return AgentResearchResponse(
+            id=log_record.id,
+            user_id=log_record.user_id,
+            ticker=log_record.ticker,
+            recommendation=log_record.recommendation,
+            confidence=log_record.confidence,
+            summary=log_record.summary,
+            trace=[AgentResearchStep(**step) for step in trace_data],
+            timestamp=log_record.timestamp
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Agent Research Error: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Research agent error: {str(e)}")
+
+
+@app.get("/api/agent/research/history")
+@app.get("/agent/research/history")
+def get_research_history(
+    ticker: Optional[str] = None,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    current_user: Optional[UserResponse] = Depends(get_current_user_optional)
+):
+    import json
+    query = db.query(AgentResearchLogDB)
+    if current_user:
+        query = query.filter(AgentResearchLogDB.user_id == current_user.id)
+    if ticker:
+        formatted = ticker.strip().upper()
+        if not (formatted.endswith(".NS") or formatted.endswith(".BO")):
+            formatted = f"{formatted}.NS"
+        query = query.filter(AgentResearchLogDB.ticker == formatted)
+
+    logs = query.order_by(AgentResearchLogDB.timestamp.desc()).limit(limit).all()
+
+    result = []
+    for log in logs:
+        trace_data = json.loads(log.trace_json) if log.trace_json else []
+        result.append({
+            "id": log.id,
+            "user_id": log.user_id,
+            "ticker": log.ticker,
+            "recommendation": log.recommendation,
+            "confidence": log.confidence,
+            "summary": log.summary,
+            "trace": trace_data,
+            "timestamp": log.timestamp
+        })
+
+    return result
+
 

@@ -4,6 +4,7 @@ import StopIcon from '@mui/icons-material/Stop';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import TradeForm from './TradeForm';
 import Analysis from './Analysis';
+import AgentResearch from './AgentResearch';
 import { getPortfolio, startAutoTrading, stopAutoTrading, getAutoStatus, triggerAutoScan, bookProfit, type PortfolioSummary } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { WelcomeOverlay } from './WelcomeOverlay';
@@ -570,9 +571,12 @@ const Dashboard: React.FC<DashboardProps> = ({ tabIndex = 0 }) => {
 
                     </Box>
                 </Box>
-            ) : (
+            ) : activeTabIndex === 1 ? (
                 // ANALYSIS VIEW
                 <Analysis />
+            ) : (
+                // AI AGENT RESEARCH VIEW
+                <AgentResearch />
             )}
 
             <Snackbar
