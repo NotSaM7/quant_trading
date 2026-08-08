@@ -23,7 +23,7 @@ def get_llm(temperature: float = 0.1) -> ChatGoogleGenerativeAI:
     if not api_key:
         raise ValueError(
             "GOOGLE_API_KEY not set in environment. "
-            "Please ensure GOOGLE_API_KEY is set in backend/.env"
+            "Add GOOGLE_API_KEY in Vercel Project Settings -> Environment Variables."
         )
 
     return ChatGoogleGenerativeAI(
