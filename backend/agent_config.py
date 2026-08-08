@@ -14,7 +14,17 @@ def get_llm(temperature: float = 0.1) -> ChatGoogleGenerativeAI:
     """Returns configured LangChain ChatGoogleGenerativeAI instance."""
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError("GOOGLE_API_KEY not set in environment.")
+        env_backend = Path(__file__).resolve().parent / ".env"
+        if env_backend.exists():
+            load_dotenv(env_backend, override=True)
+        load_dotenv(override=True)
+        api_key = os.getenv("GOOGLE_API_KEY")
+
+    if not api_key:
+        raise ValueError(
+            "GOOGLE_API_KEY not set in environment. "
+            "Please ensure GOOGLE_API_KEY is set in backend/.env"
+        )
 
     return ChatGoogleGenerativeAI(
         model="gemini-flash-lite-latest",

@@ -1,13 +1,20 @@
 import sys
 import os
 import uuid
+from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
+
+# Fix for Vercel & local imports: Add current directory to sys.path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Load environment variables
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+load_dotenv(override=True)
+
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-
-# Fix for Vercel: Add current directory to sys.path so imports work
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from database import init_db, get_db, UserDB, PortfolioDB, AgentResearchLogDB, engine as db_engine
 from security import hash_password, verify_password, create_access_token, decode_access_token
