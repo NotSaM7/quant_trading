@@ -57,7 +57,7 @@ def _fetch_history(
         # Fallback 2: explicit date range (bypasses Yahoo's period-key caching)
         dict(
             start=(datetime.today() - timedelta(days=days + 10)).strftime("%Y-%m-%d"),
-            end=datetime.today().strftime("%Y-%m-%d"),
+            end=(datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d"),
             interval=interval,
             raise_errors=False,
         ),
@@ -244,10 +244,9 @@ class TradingEngine:
 
     def get_stock_price(self, ticker: str) -> float:
         try:
-            history = _fetch_history(ticker, period="1d", retries=2, delay=1.0)
-            if history is not None and not history.empty and 'Close' in history:
-                val = float(history['Close'].iloc[-1])
-                return val if not pd.isna(val) and val > 0 else 0.0
+            price, _ = self.get_stock_price_and_prev_close(ticker)
+            if price > 0:
+                return price
         except Exception:
             pass
         return 0.0
