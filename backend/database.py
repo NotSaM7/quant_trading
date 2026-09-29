@@ -8,7 +8,21 @@ from sqlalchemy import create_engine, Column, String, Float, Integer, DateTime, 
 from sqlalchemy.engine.url import make_url, URL
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 
-load_dotenv()
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Ensure .env in backend directory is loaded
+_env_path = Path(__file__).resolve().parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
+else:
+    load_dotenv()
+
+try:
+    from pgvector.sqlalchemy import Vector
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
 
 RAW_DB_URL = os.getenv("DATABASE_URL", "")
 
@@ -130,23 +144,57 @@ class AgentResearchLogDB(Base):
 
     user = relationship("UserDB", back_populates="research_logs")
 
+class TradeEpisodeDB(Base):
+    __tablename__ = "trade_episodes"
+
+    id = Column(String, primary_key=True, index=True)
+    ticker = Column(String, nullable=False, index=True)
+    entry_date = Column(String, nullable=False)
+    exit_date = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    entry_price = Column(Float, nullable=False)
+    exit_price = Column(Float, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    pnl = Column(Float, nullable=False)
+    pnl_pct = Column(Float, nullable=False)
+    exit_reason = Column(String, nullable=False)
+    sma_gap_pct = Column(Float, nullable=False)
+    rsi14 = Column(Float, nullable=False)
+    atr_pct = Column(Float, nullable=False)
+    market_regime = Column(String, nullable=False, index=True)
+    reflection_text = Column(String, nullable=False)
+    embedding = Column(Vector(768) if (HAS_PGVECTOR and engine.dialect.name == "postgresql") else String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 def init_db():
+    if engine.dialect.name == "postgresql":
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                conn.commit()
+        except Exception as e:
+            print(f"pgvector extension init warning: {e}")
+
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as e:
         print(f"Database init warning: {e}")
 
-    # Safe migrations: add new columns to existing tables without losing data
-    for col_sql in [
+    # Safe migrations: add new columns/indexes to existing tables without losing data
+    safe_statements = [
         "ALTER TABLE positions ADD COLUMN peak_price FLOAT",
         "ALTER TABLE positions ADD COLUMN trailing_stop_price FLOAT",
-    ]:
+    ]
+    if engine.dialect.name == "postgresql":
+        safe_statements.append("CREATE INDEX IF NOT EXISTS idx_trade_episodes_embedding ON trade_episodes USING hnsw (embedding vector_cosine_ops)")
+
+    for col_sql in safe_statements:
         try:
             with engine.connect() as conn:
                 conn.execute(text(col_sql))
                 conn.commit()
         except Exception:
-            pass  # Column already exists — safe to ignore
+            pass  # Already exists — safe to ignore
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

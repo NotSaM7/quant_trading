@@ -281,7 +281,8 @@ def research_stock(
             confidence=log_record.confidence,
             summary=log_record.summary,
             trace=[AgentResearchStep(**step) for step in trace_data],
-            timestamp=log_record.timestamp
+            timestamp=log_record.timestamp,
+            trade_memory=research_result.get("trade_memory"),
         )
     except HTTPException:
         raise

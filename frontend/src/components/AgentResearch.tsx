@@ -11,7 +11,13 @@ import HistoryIcon from '@mui/icons-material/History';
 import CodeIcon from '@mui/icons-material/Code';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import { runAgentResearch, getAgentResearchHistory, type AgentResearchResponse, type AgentResearchStep } from '../api';
+import { 
+    runAgentResearch, 
+    getAgentResearchHistory, 
+    type AgentResearchResponse, 
+    type AgentResearchStep,
+    type TradeMemoryData
+} from '../api';
 
 // --- ISSUE 1 FIX: TOOL NAME MAPPING DICTIONARY ---
 export const TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -20,6 +26,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
     get_momentum_score: "Momentum Ranking",
     get_recent_news: "Recent News",
     run_backtest: "Backtest Results",
+    query_trade_memory: "Quant Trade Memory (RAG)",
 };
 
 // --- ISSUE 1 FIX: TICKER TO HUMAN-READABLE COMPANY NAME MAPPING ---
@@ -167,6 +174,19 @@ export const AgentResearch: React.FC = () => {
         }
     };
 
+    const memoryData: TradeMemoryData | null = result?.trade_memory || (() => {
+        if (!result) return null;
+        const memoryStep = result.trace?.find(s => s.tool === 'query_trade_memory');
+        if (memoryStep && memoryStep.result) {
+            try {
+                return JSON.parse(memoryStep.result) as TradeMemoryData;
+            } catch {
+                return null;
+            }
+        }
+        return null;
+    })();
+
     const getRecBadgeStyle = (rec: string) => {
         switch (rec?.toUpperCase()) {
             case 'BUY':
@@ -203,6 +223,7 @@ export const AgentResearch: React.FC = () => {
             case 'get_momentum_score': return { bg: 'rgba(168,85,247,0.2)', color: '#c084fc', border: 'rgba(168,85,247,0.4)' };
             case 'get_recent_news': return { bg: 'rgba(249,115,22,0.2)', color: '#fb923c', border: 'rgba(249,115,22,0.4)' };
             case 'run_backtest': return { bg: 'rgba(34,197,94,0.2)', color: '#4ade80', border: 'rgba(34,197,94,0.4)' };
+            case 'query_trade_memory': return { bg: 'rgba(236,72,153,0.2)', color: '#f472b6', border: 'rgba(236,72,153,0.4)' };
             default: return { bg: 'rgba(148,163,184,0.2)', color: '#cbd5e1', border: 'rgba(148,163,184,0.4)' };
         }
     };
@@ -573,7 +594,192 @@ export const AgentResearch: React.FC = () => {
                     {/* --- ISSUE 2 FIX: EXPANDABLE FULL ANALYSIS SECTION --- */}
                     <Collapse in={showFullAnalysis} timeout="auto" unmountOnExit>
                         <Box display="flex" flexDirection="column" gap={3}>
-                            
+
+                            {/* --- QUANT REGIME MEMORY & TRAP VALIDATION (RAG) CARD --- */}
+                            {memoryData && (
+                                <Paper
+                                    elevation={0}
+                                    sx={{
+                                        p: { xs: 3, sm: 3.5 },
+                                        borderRadius: '20px',
+                                        background: memoryData.is_high_risk_trap
+                                            ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(18, 18, 18, 0.95))'
+                                            : 'linear-gradient(135deg, rgba(29, 185, 84, 0.08), rgba(18, 18, 18, 0.95))',
+                                        border: memoryData.is_high_risk_trap
+                                            ? '1px solid rgba(239, 68, 68, 0.35)'
+                                            : '1px solid rgba(29, 185, 84, 0.35)',
+                                        boxShadow: memoryData.is_high_risk_trap
+                                            ? '0 0 30px rgba(239, 68, 68, 0.12)'
+                                            : '0 0 30px rgba(29, 185, 84, 0.12)',
+                                    }}
+                                >
+                                    <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} mb={2}>
+                                        <Box display="flex" alignItems="center" gap={1.5}>
+                                            <Box
+                                                sx={{
+                                                    width: 36,
+                                                    height: 36,
+                                                    borderRadius: '10px',
+                                                    bgcolor: memoryData.is_high_risk_trap ? 'rgba(239, 68, 68, 0.2)' : 'rgba(29, 185, 84, 0.2)',
+                                                    color: memoryData.is_high_risk_trap ? '#ef4444' : '#1DB954',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontSize: '18px',
+                                                }}
+                                            >
+                                                🧠
+                                            </Box>
+                                            <Box>
+                                                <Typography variant="h6" fontWeight="800" sx={{ color: 'white', fontFamily: '"Outfit", sans-serif', fontSize: '16px' }}>
+                                                    Quant Regime Memory & Trap Validation (RAG)
+                                                </Typography>
+                                                <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                                                    Supabase pgvector · Semantic Search across {memoryData.analogous_setups_found} Analogous Past Setups
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+
+                                        <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
+                                            <Chip
+                                                label={`REGIME: ${memoryData.detected_regime.replace(/_/g, ' ')}`}
+                                                sx={{
+                                                    bgcolor: 'rgba(255, 255, 255, 0.08)',
+                                                    color: '#E2E8F0',
+                                                    fontWeight: 700,
+                                                    fontSize: '11px',
+                                                    fontFamily: '"Outfit", sans-serif'
+                                                }}
+                                            />
+                                            {memoryData.is_high_risk_trap && (
+                                                <Chip
+                                                    label="⚠️ HIGH TRAP RISK"
+                                                    sx={{
+                                                        bgcolor: 'rgba(239, 68, 68, 0.25)',
+                                                        color: '#ef4444',
+                                                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                                                        fontWeight: 800,
+                                                        fontSize: '11px',
+                                                        fontFamily: '"Outfit", sans-serif'
+                                                    }}
+                                                />
+                                            )}
+                                        </Box>
+                                    </Box>
+
+                                    {/* Regime Summary Alert */}
+                                    <Alert
+                                        severity={memoryData.is_high_risk_trap ? "warning" : "success"}
+                                        sx={{
+                                            borderRadius: '12px',
+                                            mb: 2.5,
+                                            bgcolor: memoryData.is_high_risk_trap ? 'rgba(245, 158, 11, 0.12)' : 'rgba(29, 185, 84, 0.12)',
+                                            color: memoryData.is_high_risk_trap ? '#fcd34d' : '#86efac',
+                                            border: memoryData.is_high_risk_trap ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(29, 185, 84, 0.25)',
+                                            fontFamily: '"Outfit", sans-serif',
+                                            fontSize: '13px'
+                                        }}
+                                    >
+                                        {memoryData.regime_summary}
+                                    </Alert>
+
+                                    {/* Metrics Grid */}
+                                    <Box display="grid" gridTemplateColumns={{ xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }} gap={1.5} mb={2}>
+                                        <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block' }}>REGIME WIN RATE</Typography>
+                                            <Typography variant="h6" fontWeight="800" sx={{ color: memoryData.regime_win_rate_pct >= 60 ? '#1DB954' : memoryData.regime_win_rate_pct >= 40 ? '#f59e0b' : '#ef4444' }}>
+                                                {memoryData.regime_win_rate_pct}%
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block' }}>AVG HISTORICAL RETURN</Typography>
+                                            <Typography variant="h6" fontWeight="800" sx={{ color: memoryData.regime_avg_pnl_pct >= 0 ? '#1DB954' : '#ef4444' }}>
+                                                {memoryData.regime_avg_pnl_pct >= 0 ? `+${memoryData.regime_avg_pnl_pct}%` : `${memoryData.regime_avg_pnl_pct}%`}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block' }}>STOP-LOSS TRIGGER RATE</Typography>
+                                            <Typography variant="h6" fontWeight="800" sx={{ color: memoryData.stop_loss_hit_rate_pct > 30 ? '#ef4444' : '#1DB954' }}>
+                                                {memoryData.stop_loss_hit_rate_pct}%
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                                            <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block' }}>ANALOGOUS SETUPS</Typography>
+                                            <Typography variant="h6" fontWeight="800" sx={{ color: '#FFFFFF' }}>
+                                                {memoryData.analogous_setups_found} Episodes
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+
+                                    {/* Analogous Episodes Accordion */}
+                                    {memoryData.episodes && memoryData.episodes.length > 0 && (
+                                        <Accordion
+                                            elevation={0}
+                                            sx={{
+                                                bgcolor: 'rgba(0,0,0,0.3)',
+                                                borderRadius: '12px !important',
+                                                border: '1px solid rgba(255,255,255,0.06)',
+                                                '&:before': { display: 'none' }
+                                            }}
+                                        >
+                                            <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#94a3b8' }} />}>
+                                                <Typography variant="caption" sx={{ color: '#B3B3B3', fontWeight: 700, letterSpacing: '0.5px' }}>
+                                                    📜 VIEW {memoryData.episodes.length} ANALOGOUS HISTORICAL TRADE EPISODES
+                                                </Typography>
+                                            </AccordionSummary>
+                                            <AccordionDetails sx={{ pt: 0 }}>
+                                                <Box display="flex" flexDirection="column" gap={1.5}>
+                                                    {memoryData.episodes.map((ep, idx) => (
+                                                        <Box
+                                                            key={idx}
+                                                            sx={{
+                                                                p: 1.5,
+                                                                borderRadius: '8px',
+                                                                bgcolor: 'rgba(255,255,255,0.02)',
+                                                                border: '1px solid rgba(255,255,255,0.05)',
+                                                                display: 'flex',
+                                                                flexDirection: 'column',
+                                                                gap: 0.5
+                                                            }}
+                                                        >
+                                                            <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                                                                <Typography variant="body2" fontWeight="700" sx={{ color: '#FFFFFF' }}>
+                                                                    {ep.ticker} ({ep.entry_date} → {ep.exit_date})
+                                                                </Typography>
+                                                                <Box display="flex" gap={1} alignItems="center">
+                                                                    <Chip
+                                                                        size="small"
+                                                                        label={`${ep.similarity_score_pct}% Match`}
+                                                                        sx={{ bgcolor: 'rgba(236,72,153,0.15)', color: '#f472b6', fontSize: '10px', height: '20px' }}
+                                                                    />
+                                                                    <Chip
+                                                                        size="small"
+                                                                        label={ep.pnl_pct >= 0 ? `+${ep.pnl_pct}%` : `${ep.pnl_pct}%`}
+                                                                        sx={{
+                                                                            bgcolor: ep.pnl_pct >= 0 ? 'rgba(29,185,84,0.15)' : 'rgba(239,68,68,0.15)',
+                                                                            color: ep.pnl_pct >= 0 ? '#1DB954' : '#ef4444',
+                                                                            fontSize: '10px',
+                                                                            height: '20px',
+                                                                            fontWeight: 700
+                                                                        }}
+                                                                    />
+                                                                </Box>
+                                                            </Box>
+                                                            <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                                                                Entry: ₹{ep.entry_price} | Exit: ₹{ep.exit_price} ({ep.exit_reason}) | SMA Gap: {ep.sma_gap_pct > 0 ? `+${ep.sma_gap_pct}%` : `${ep.sma_gap_pct}%`} | RSI: {ep.rsi14} | ATR: {ep.atr_pct}%
+                                                            </Typography>
+                                                            <Typography variant="caption" sx={{ color: '#cbd5e1', fontStyle: 'italic', mt: 0.5 }}>
+                                                                "{ep.reflection}"
+                                                            </Typography>
+                                                        </Box>
+                                                    ))}
+                                                </Box>
+                                            </AccordionDetails>
+                                        </Accordion>
+                                    )}
+                                </Paper>
+                            )}
+
                             {/* Full Cited Reasoning Section */}
                             <Paper
                                 elevation={0}

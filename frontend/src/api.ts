@@ -213,6 +213,34 @@ export interface AgentResearchStep {
     status: string;
 }
 
+export interface TradeEpisodeItem {
+    ticker: string;
+    entry_date: string;
+    exit_date: string;
+    entry_price: number;
+    exit_price: number;
+    pnl_pct: number;
+    exit_reason: string;
+    sma_gap_pct: number;
+    rsi14: number;
+    atr_pct: number;
+    market_regime: string;
+    reflection: string;
+    similarity_score_pct: number;
+}
+
+export interface TradeMemoryData {
+    query_ticker: string;
+    detected_regime: string;
+    analogous_setups_found: number;
+    regime_win_rate_pct: number;
+    regime_avg_pnl_pct: number;
+    stop_loss_hit_rate_pct: number;
+    is_high_risk_trap: boolean;
+    regime_summary: string;
+    episodes: TradeEpisodeItem[];
+}
+
 export interface AgentResearchResponse {
     id: string;
     user_id?: string;
@@ -222,7 +250,9 @@ export interface AgentResearchResponse {
     summary: string;
     trace: AgentResearchStep[];
     timestamp: string;
+    trade_memory?: TradeMemoryData;
 }
+
 
 export const runAgentResearch = async (ticker: string): Promise<AgentResearchResponse> => {
     const response = await api.post<AgentResearchResponse>('/agent/research', { ticker });

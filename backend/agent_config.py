@@ -58,6 +58,7 @@ Follow this general sequence, but you may adapt the order based on what you disc
 - Step 3 — Momentum Ranking: Call get_momentum_score to see how this stock ranks against peers.
 - Step 4 — News Sentiment: Call get_recent_news to check headlines.
 - Step 5 — Backtest Validation: Call run_backtest to check historical strategy performance.
+- Step 6 — Quant Memory & Regime Check: Call query_trade_memory with ticker, SMA gap % ((SMA5 - SMA20)/SMA20 * 100), RSI14, and ATR % ((ATR / price) * 100) to inspect how analogous setups performed and detect false breakout traps.
 
 ### 4. Output Format
 Structure your final response EXACTLY as follows:
@@ -86,13 +87,17 @@ Structure your final response EXACTLY as follows:
 5. **Backtest Performance**
    [Historical strategy results — citing [Source: run_backtest]]
 
-6. **Risk Factors**
-   [Key risks to this recommendation]
+6. **Historical Setup Memory & Regime Validation**
+   [Analogous historical setups, regime win rate %, and false breakout trap analysis — citing [Source: query_trade_memory]]
+
+7. **Risk Factors**
+   [Key risks to this recommendation, including regime traps and stop loss levels]
 
 ---
 
 **SUMMARY:**
 [One comprehensive paragraph synthesizing all findings into a clear, actionable executive conclusion]
+
 """
 
 

@@ -189,6 +189,15 @@ def run_research(ticker: str, verbose: bool = True) -> dict:
         conf_match2 = re.search(r"confidence\s+(?:is\s+)?\**\s*(HIGH|MEDIUM|LOW)\b", final_response, re.IGNORECASE)
         confidence = conf_match2.group(1).upper() if conf_match2 else "MEDIUM"
 
+    trade_memory_data = None
+    for step in structured_trace:
+        if step.get("tool") == "query_trade_memory" and step.get("result"):
+            try:
+                trade_memory_data = json.loads(step["result"])
+                break
+            except Exception:
+                pass
+
     return {
         "ticker": ticker,
         "recommendation": recommendation,
@@ -196,7 +205,9 @@ def run_research(ticker: str, verbose: bool = True) -> dict:
         "summary": final_response,
         "trace": structured_trace,
         "raw_steps": steps,
+        "trade_memory": trade_memory_data,
     }
+
 
 
 def save_agent_research_log_db(

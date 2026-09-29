@@ -231,4 +231,38 @@ def run_backtest(ticker: str, months: int = 12) -> str:
         })
 
 
-AGENT_TOOLS = [get_price, compute_indicators, get_momentum_score, get_recent_news, run_backtest]
+@tool
+def query_trade_memory(ticker: str, sma_gap_pct: float = 0.0, rsi: float = 50.0, atr_pct: float = 2.0) -> str:
+    """Retrieve historical trade episodes with similar technical setups and market regimes from Supabase vector memory.
+
+    Args:
+        ticker: Stock ticker symbol in NSE/BSE format (e.g. 'RELIANCE.NS')
+        sma_gap_pct: Percentage difference between SMA5 and SMA20 (e.g. 1.2 for +1.2%)
+        rsi: Current 14-day RSI indicator value (e.g. 52.7)
+        atr_pct: Current daily ATR as a percentage of stock price (e.g. 1.7)
+
+    Returns:
+        JSON string containing analogous historical episodes, regime win rate %, average return %, stop-loss frequency, and false breakout trap warnings.
+    """
+    try:
+        from rag_memory import search_similar_trade_episodes
+        result = search_similar_trade_episodes(
+            ticker=ticker,
+            sma_gap_pct=float(sma_gap_pct),
+            rsi14=float(rsi),
+            atr_pct=float(atr_pct),
+            top_k=5,
+        )
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({
+            "ticker": ticker,
+            "error": f"Failed to retrieve trade memory: {str(e)}",
+            "analogous_setups_found": 0,
+            "regime_win_rate_pct": 0.0,
+            "episodes": [],
+        })
+
+
+AGENT_TOOLS = [get_price, compute_indicators, get_momentum_score, get_recent_news, run_backtest, query_trade_memory]
+

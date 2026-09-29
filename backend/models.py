@@ -97,6 +97,10 @@ class BacktestTrade(BaseModel):
     pnl: float
     pnl_pct: float
     exit_reason: str
+    sma_gap_pct: Optional[float] = None
+    rsi14: Optional[float] = None
+    atr_pct: Optional[float] = None
+    market_regime: Optional[str] = None
 
 class EquityCurvePoint(BaseModel):
     date: str
@@ -135,5 +139,7 @@ class AgentResearchResponse(BaseModel):
     summary: str
     trace: List[AgentResearchStep]
     timestamp: datetime
+    trade_memory: Optional[Dict[str, Any]] = None
+
 
 

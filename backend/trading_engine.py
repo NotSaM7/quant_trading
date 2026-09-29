@@ -242,6 +242,45 @@ class TradingEngine:
             trades=sorted(self.history, key=lambda x: x.timestamp, reverse=True)
         )
 
+    def _log_trade_episode_safely(
+        self,
+        db,
+        ticker: str,
+        entry_price: float,
+        exit_price: float,
+        quantity: int,
+        pnl: float,
+        exit_reason: str,
+        sma_gap_pct: float = 0.0,
+        rsi14: float = 50.0,
+        atr_pct: float = 2.0,
+        market_regime: Optional[str] = None
+    ):
+        try:
+            from rag_memory import store_trade_episode
+            from datetime import date
+            today_str = date.today().strftime("%Y-%m-%d")
+            pnl_pct = ((exit_price - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
+            store_trade_episode({
+                "ticker": ticker,
+                "entry_date": today_str,
+                "exit_date": today_str,
+                "action": "SELL",
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "quantity": quantity,
+                "pnl": pnl,
+                "pnl_pct": pnl_pct,
+                "exit_reason": exit_reason,
+                "sma_gap_pct": sma_gap_pct,
+                "rsi14": rsi14,
+                "atr_pct": atr_pct,
+                "market_regime": market_regime,
+            }, db=db)
+        except Exception as e:
+            print(f"Warning: Could not log trade episode to RAG memory: {e}")
+
+
     def get_stock_price(self, ticker: str) -> float:
         try:
             price, _ = self.get_stock_price_and_prev_close(ticker)
@@ -560,6 +599,10 @@ class TradingEngine:
         entry_price = 0.0
         entry_date = ""
         stop_price = 0.0
+        entry_sma_gap_pct = 0.0
+        entry_rsi = 50.0
+        entry_atr_pct = 0.0
+        entry_regime = "MODERATE_UPTREND"
         
         trades: List[BacktestTrade] = []
         equity_curve: List[Dict[str, float]] = []
@@ -590,7 +633,11 @@ class TradingEngine:
                         quantity=position_qty,
                         pnl=pnl,
                         pnl_pct=pnl_pct,
-                        exit_reason="STOP_LOSS (-3.0%)"
+                        exit_reason="STOP_LOSS (-3.0%)",
+                        sma_gap_pct=entry_sma_gap_pct,
+                        rsi14=entry_rsi,
+                        atr_pct=entry_atr_pct,
+                        market_regime=entry_regime,
                     ))
                     position_qty = 0
                     
@@ -609,6 +656,23 @@ class TradingEngine:
                         entry_date = date_str
                         stop_price = close * (1 - self.stop_loss_pct)
                         cash -= qty * close
+
+                        # Capture regime and indicator snapshot at entry
+                        sma20_safe = sma20 if sma20 > 0 else 1.0
+                        entry_sma_gap_pct = round(((sma5 - sma20_safe) / sma20_safe) * 100, 2)
+                        entry_rsi = round(rsi, 2)
+                        entry_atr_pct = round((atr / close) * 100, 2) if close > 0 else 2.0
+
+                        if rsi >= 70:
+                            entry_regime = "OVERBOUGHT_MOMENTUM"
+                        elif entry_atr_pct >= 2.5:
+                            entry_regime = "HIGH_VOLATILITY_CHOP"
+                        elif entry_sma_gap_pct > 2.0:
+                            entry_regime = "STRONG_BULLISH_TREND"
+                        elif entry_sma_gap_pct <= 1.0 and 48 <= rsi <= 56:
+                            entry_regime = "SIDEWAYS_CONSOLIDATION"
+                        else:
+                            entry_regime = "MODERATE_UPTREND"
             else:
                 # SELL check: SMA5 < SMA20
                 if sma5 < sma20:
@@ -626,9 +690,14 @@ class TradingEngine:
                         quantity=position_qty,
                         pnl=pnl,
                         pnl_pct=pnl_pct,
-                        exit_reason="SMA Crossover Exit"
+                        exit_reason="SMA Crossover Exit",
+                        sma_gap_pct=entry_sma_gap_pct,
+                        rsi14=entry_rsi,
+                        atr_pct=entry_atr_pct,
+                        market_regime=entry_regime,
                     ))
                     position_qty = 0
+
 
             current_equity = cash + (position_qty * close)
             equity_curve.append({
