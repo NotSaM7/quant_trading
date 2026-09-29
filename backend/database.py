@@ -1,5 +1,6 @@
 import os
 import re
+import ssl
 import tempfile
 from datetime import datetime, timezone
 from typing import Generator
@@ -31,45 +32,94 @@ def sanitize_url(raw: str) -> str:
 
 DATABASE_URL = sanitize_url(RAW_DB_URL)
 
+DB_ENGINE_DRIVER = "none"
+DB_ENGINE_ERROR = None
+
 def create_db_engine():
+    global DB_ENGINE_DRIVER, DB_ENGINE_ERROR
     if DATABASE_URL:
+        # First attempt: Try pure-python pg8000 driver (100% reliable in Vercel serverless / AWS Lambda Linux)
         try:
             parsed = make_url(DATABASE_URL)
-            cleaned_url = URL.create(
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+
+            url_pg8000 = URL.create(
+                drivername="postgresql+pg8000",
+                username=parsed.username,
+                password=parsed.password,
+                host=parsed.host,
+                port=parsed.port or 6543,
+                database="postgres",
+            )
+            eng = create_engine(
+                url_pg8000,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=10,
+                pool_timeout=30,
+                pool_recycle=300,
+                connect_args={"ssl_context": ssl_ctx, "timeout": 10},
+            )
+            with eng.connect() as conn:
+                pass
+            DB_ENGINE_DRIVER = "postgresql+pg8000"
+            DB_ENGINE_ERROR = None
+            print("Successfully connected to Supabase PostgreSQL using pg8000!")
+            return eng
+        except Exception as e_pg8000:
+            print(f"pg8000 connection warning: {e_pg8000}, trying psycopg2...")
+            DB_ENGINE_ERROR = f"pg8000 error: {e_pg8000}"
+
+        # Second attempt: Try psycopg2 driver with sslmode=require
+        try:
+            parsed = make_url(DATABASE_URL)
+            q = dict(parsed.query)
+            if "sslmode" not in q:
+                q["sslmode"] = "require"
+
+            url_psycopg2 = URL.create(
                 drivername="postgresql",
                 username=parsed.username,
                 password=parsed.password,
                 host=parsed.host,
-                port=parsed.port,
+                port=parsed.port or 6543,
                 database="postgres",
-                query=parsed.query
+                query=q,
             )
-
-
             eng = create_engine(
-                cleaned_url,
+                url_psycopg2,
                 pool_pre_ping=True,
-                pool_size=15,          # max persistent connections per process
-                max_overflow=15,       # burst connections (total: 30 per process)
-                pool_timeout=30,       # seconds to wait for a free connection
-                pool_recycle=300,      # recycle connections every 5 minutes to prevent cloud firewall drops
+                pool_size=10,
+                max_overflow=10,
+                pool_timeout=30,
+                pool_recycle=300,
                 connect_args={
-                    "connect_timeout": 10,  # fail fast if Supabase is unreachable
-                    "keepalives": 1,        # enable TCP keepalives
-                    "keepalives_idle": 30,  # send keepalive packet after 30s idle
+                    "connect_timeout": 10,
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
                     "keepalives_interval": 10,
                     "keepalives_count": 5,
                 },
             )
+            with eng.connect() as conn:
+                pass
+            DB_ENGINE_DRIVER = "postgresql+psycopg2"
+            DB_ENGINE_ERROR = None
+            print("Successfully connected to Supabase PostgreSQL using psycopg2!")
             return eng
-        except Exception as e:
-            print(f"Postgres Connection Warning: {e}, falling back to SQLite")
+        except Exception as e_psycopg2:
+            print(f"psycopg2 connection warning: {e_psycopg2}, falling back to SQLite")
+            DB_ENGINE_ERROR = f"{DB_ENGINE_ERROR} | psycopg2 error: {e_psycopg2}"
 
     # Local / Fallback SQLite Database
+    DB_ENGINE_DRIVER = "sqlite"
     DB_DIR = os.path.join(tempfile.gettempdir(), "quant_trading_data")
     os.makedirs(DB_DIR, exist_ok=True)
     DB_PATH = os.path.join(DB_DIR, "quant_trading.db")
     SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+    print(f"Using fallback SQLite database at {DB_PATH}")
     return create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 
 engine = create_db_engine()
@@ -167,34 +217,34 @@ class TradeEpisodeDB(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 def init_db():
-    if engine.dialect.name == "postgresql":
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-                conn.commit()
-        except Exception as e:
-            print(f"pgvector extension init warning: {e}")
-
     try:
-        Base.metadata.create_all(bind=engine)
+        with engine.connect() as conn:
+            if engine.dialect.name == "postgresql":
+                try:
+                    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                    conn.commit()
+                except Exception as e:
+                    print(f"pgvector extension init warning: {e}")
+
+            Base.metadata.create_all(bind=conn)
+            conn.commit()
+
+            # Safe migrations: add new columns/indexes to existing tables without losing data
+            safe_statements = [
+                "ALTER TABLE positions ADD COLUMN peak_price FLOAT",
+                "ALTER TABLE positions ADD COLUMN trailing_stop_price FLOAT",
+            ]
+            if engine.dialect.name == "postgresql":
+                safe_statements.append("CREATE INDEX IF NOT EXISTS idx_trade_episodes_embedding ON trade_episodes USING hnsw (embedding vector_cosine_ops)")
+
+            for col_sql in safe_statements:
+                try:
+                    conn.execute(text(col_sql))
+                    conn.commit()
+                except Exception:
+                    pass  # Already exists — safe to ignore
     except Exception as e:
         print(f"Database init warning: {e}")
-
-    # Safe migrations: add new columns/indexes to existing tables without losing data
-    safe_statements = [
-        "ALTER TABLE positions ADD COLUMN peak_price FLOAT",
-        "ALTER TABLE positions ADD COLUMN trailing_stop_price FLOAT",
-    ]
-    if engine.dialect.name == "postgresql":
-        safe_statements.append("CREATE INDEX IF NOT EXISTS idx_trade_episodes_embedding ON trade_episodes USING hnsw (embedding vector_cosine_ops)")
-
-    for col_sql in safe_statements:
-        try:
-            with engine.connect() as conn:
-                conn.execute(text(col_sql))
-                conn.commit()
-        except Exception:
-            pass  # Already exists — safe to ignore
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

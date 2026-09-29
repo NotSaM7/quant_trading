@@ -79,10 +79,13 @@ def read_root():
 @app.get("/debug")
 def debug_status():
     db_url = os.getenv("DATABASE_URL", "")
+    from database import DB_ENGINE_DRIVER, DB_ENGINE_ERROR
     return {
         "has_database_url": bool(db_url),
         "database_url_prefix": db_url[:30] if db_url else "NONE (USING SQLITE)",
-        "active_engine_url": str(db_engine.url) if db_engine else "NONE"
+        "active_engine_url": str(db_engine.url) if db_engine else "NONE",
+        "db_engine_driver": DB_ENGINE_DRIVER,
+        "db_engine_error": DB_ENGINE_ERROR,
     }
 
 # --- AUTH ENDPOINTS ---

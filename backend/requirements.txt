@@ -15,4 +15,6 @@ langchain-google-genai
 google-generativeai
 newsapi-python
 pgvector
+pg8000
+
 
